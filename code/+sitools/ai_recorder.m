@@ -1,26 +1,71 @@
 classdef ai_recorder < sitools.si_linker
-    % sitools.ai_recorder s in data from analog input channels on a defined DAQ and can be synced to ScanImage
+    % sitools.ai_recorder - acquire data from analog input channels and sync some operations with ScanImage
     %
-    % Usage instructions
+    % Purpose
+    % Connect to a defined set of analog input channels on a defined NI
+    % DAQ and acquire data at at a defined sample rate. Data are streamed
+    % to a plot window. If ScanImage is started, data acquisition can be
+    % configured to start when "Focus" or "Grab" are pressed. In addition,
+    % if data are being saved in Grab mode a binary log file containing
+    % the acquired data is automatically saved in the same directory with
+    % a similar file name to the ScanImage TIFF. 
     %
-    % Interactive use without ScanImage:
-    % 1. Start:
-    % AI = sitools.ai_recorder(false) %false so it does not attach to ScanImage
+    % Getting Help
+    % Try "doc(sitools.ai_recorder" and also look at the help text for the 
+    % following methods of this function:
+    % sitools.ai_recorder.linkToScanImageAPI
+    % sitools.ai_recorder.connectToDAQ
+    % sitools.ai_recorder.openFigureWindow
+    % sitools.ai_recorder.start
+    % sitools.ai_recorder.stop
+    % sitools.ai_recorder.loadSettings
+    % sitools.ai_recorder.saveCurrentSettings
+    %
+    %
+    % * Quick Start: connect to ScanImage with default settings
+    %  a. Start ScanImage
+    %  b. Do: AI = sitools.ai_recorder;
+    %  c. Press "Focus" or "Grab". A .bin file is saved if you also choose
+    %     to save image data. 
+    %  d. Close window or do delete(AI) to shut down the AI recorder.
     % 
-    % 2. Set any properties then run:
-    % AI.connectAndStart
     %
-    % You can then:
-    % AI.stop
-    % AI.start
-    % 
-    % Also:
-    % AI.connectToDAQ
+    % * Create, save, then load a set of acquisition preferences
+    % >> AI=sitools.ai_recorder(false);
+    % >> AI.chanNames={'frame_trigger','valve'};
+    % >> AI.AI_channels=[0,1];
+    % >> AI.saveCurrentSettings('prefsAIrec.mat');
+    % >> delete(AI) %Just to prove it works
+    %   sitools.ai_recorder is shutting down
+    % >> scanimage
+    % >> AI=sitools.ai_recorder('prefsAIrec.mat'); % check displayed properies
     %
     %
-    % You can stop the acquisition by closing the figure window or doing:
-    % delete(AI)
+    % * Interactive use without ScanImage
+    %  a. Start:
+    %  >> AI = sitools.ai_recorder(false) %false so it does not attach to ScanImage
     %
+    %  b. Set any desired properties then start
+    %  >> AI.AI_channels=0:1 % acquire data on first two channels
+    %  >> AI.voltageRange=1  % over +/- 1 volt
+    %  >> obj.openFigureWindow % To display data as they come in
+    %  >> AI.connectAndStart % begin acquisition
+    %  
+    %  c. You can the stop and start the acquisition at will:
+    %  >> AI.stop
+    %  >> AI.start
+    %
+    %  d. Save data to disk
+    %  >> AI.fname='test.bin';
+    %  >> AI.start
+    %
+    %
+    % Problems?
+    % If you see "ERROR: A Task with name 'airecorder' already exists in
+    % the DAQmx System" then check for existing instances of this class
+    % and delete them (e.g. delete(myAIrec) ). If there are no instances
+    % then there is an orphan task. You will either need to change the
+    % "taskName" property to a different string or restart MATLAB. 
     %
     %
     % Rob Campbell - Basel, 2017
@@ -30,29 +75,28 @@ classdef ai_recorder < sitools.si_linker
     % https://github.com/tenss/MatlabDAQmx
     
     properties
-        hTask % The DAQmx task handle
-        devName = 'aux' % Name of the DAQ device to which we will connect
-        
-        hFig % The figure/GUI handle
-        
 
         % DAQmx Task configuration
-        AI_channels = 0:7 % Channels from which to acquire data
-        voltageRange = 5  % Will acquire data over +/- this range
-        sampleRate = 1E3  % Sample Rate in Hz
-        sampleReadSize = 1000  % Read off this many samples each time
+        hTask % The DAQmx task handle is stored here
+        devName = 'aux' % Name of the DAQ device to which we will connect
+        AI_channels = 0:7 % Analog input channels from which to acquire data. e.g. 0:3
+        voltageRange = 5  % Scalar defining the range over which data will be digitized
+        sampleRate = 1E3  % Analog input sample Rate in Hz
+        sampleReadSize = 1000  % Read off this many samples then plot and log to disk
         
         % Saving and data configuration 
-        fname = '' % Name of the file to write data to
-        chanNames = {}; % Optionally enter the names of the channels
+        fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
+        chanNames = {}; % Cell array describing the channes. e.g. {'valve', 'trigger', 'frame_clock'}
+        dataType = 'int16' % The format we will write the data in to binary file ai_recorder.fname
         
+        hFig % The figure/GUI handle
+    
     end % Close properties
     
     properties (Hidden)
         figTagName = 'ai_recorder' % Tag for the figure/GUI window
         hAx % Figure axis handle
         taskName = 'airecorder' % Name for the task
-        dataType = 'int16' % The format we will write the data in
         fid = -1       % File handle to which we will write data
         data       % The last read from the buffer is held here
     end % Close hidden properties
@@ -62,7 +106,22 @@ classdef ai_recorder < sitools.si_linker
     methods
         
         function obj = ai_recorder(linkToScanImage)
+            % sitools.ai_recorder 
+            %
+            % Inputs
+            % linkToScanImage - true by default. If true, we attempt to 
+            %             connect to ScanImage so that analog data are 
+            %             acquired whenver Focus or Grab are pressed. If
+            %             linkToScanImage is false, this is not done. If
+            %             linkToScanImage is a string, we treat it as a 
+            %             preference file name and attempt to load it. 
+            
             if nargin<1
+                linkToScanImage=true;
+            end
+            
+            if ischar(linkToScanImage)
+                obj.loadSettings(linkToScanImage)
                 linkToScanImage=true;
             end
             
@@ -74,20 +133,21 @@ classdef ai_recorder < sitools.si_linker
             end
          
         end %constructor
-        
-        
-        function delete(obj)
-            fprintf('sitools.ai_recorder is shutting down\n')
-            obj.hTask.stop
-            obj.hTask.delete
-            cellfun(@delete,obj.listeners)
-            delete(obj.hFig) % Closes the plot window 
-            obj.closeDataLogFile
-        end % destructor
-    
+          
         
         function success=connectToDAQ(obj)
-            % Connect to the DAQ using the object properties 
+            % ai_recorder.connectToDAQ - Connect to the DAQ using the object properties 
+            %
+            % Purpose
+            % Run this method to connect to an NI DAQ device for analog
+            % input using the parameters described in the properties of
+            % this class. i.e.
+            % devName - the name of the NI device 
+            % AI_channels - vector channel numbers
+            % voltageRange - scalar defining the digitization range
+            % sampleRate - number of samples per second to acquire
+            % sampleReadSize - the number of samples to read before pulling
+            %                  data off the DAQ for plotting or saving to disk
             if ~isempty(obj.hTask)
                 fprintf('Not connecting to NI DAQ device "%s". sitools.ai_recoder has already connected to the DAQ\n',...
                     obj.devName)
@@ -119,13 +179,245 @@ classdef ai_recorder < sitools.si_linker
             end                
         end % connectToDAQ
         
+
+
+        % -----------------------------------------------------------
+        % Short helper methods
+        function success=start(obj)
+            % ai_recorder.start - begin acquiring data
+            %
+            % Purpose
+            % Calls ai_recorder.hTask.start which tells DAQmx to start 
+            % acquiring data. Files are opened for writing if the fname
+            % property contains a file name. If data are being saved to 
+            % disk, the plot window name is updated to report the log file name. 
+            %
+            % Outputs
+            % Returns true if all went well and false otherwise
+            
+            if isempty(obj.hTask)
+                fprintf('No NI DAQ connected to ai_recorder\n')
+                return
+            end
+            try
+                obj.openFileForWriting; % Only opens a file if the fname property is not empty
+                obj.hTask.start % Task will start right away if there are no triggers configured
+                if ~isempty(obj.hFig) && isvalid(obj.hFig)
+                    fprintf('Recording data on %s. Close window to stop.\n', obj.devName);
+                    if ~isempty(obj.fname)
+                        obj.hFig.Name=['SAVING TO: ',obj.fname];
+                    else
+                        obj.hFig.Name='AI recorder';
+                    end
+                else
+                    fprintf('Recording data on %s. use stop method to halt acqusition.\n', obj.devName);
+                end
+                success=true;
+            catch ME
+                obj.reportError(ME)
+                success=false;
+            end
+        end % start
+              
+        function success=stop(obj)
+            % ai_recorder.stop - stop the acquisition and close any open data logging files
+            %
+            % Purpose
+            % Calls ai_recorder.hTask.stop which tells DAQmx to stop
+            % acquiring data. If data are being saved to disk, the log
+            % file is closed. 
+            %
+            % Outputs
+            % Returns true if all went well and false otherwise
+            
+            if isempty(obj.hTask)
+                fprintf('No NI DAQ connected to ai_recorder\n')
+                return
+            end
+            try
+                obj.hTask.stop;
+                obj.closeDataLogFile
+                success=true;
+            catch ME
+                obj.reportError(ME)
+                success=false;
+            end
+        end
         
+        function connectAndStart(obj)
+            % ai_recorder.connectAndStart - connect to the DAQ and start
+            %
+            % Purpose
+            % simply runs the connect method and then start method
+            
+            obj.connectToDAQ;
+            obj.start;
+        end
+
+        function saveCurrentSettings(obj,fname)
+            % ai_recorder.saveCurrentSettings(fname) - save settings file
+            %
+            % Purpose
+            % Writes the current DAQ settings to a MATLAB structure.
+            % This method is used to create the "meta" file saved 
+            % along with the .bin file. It's also used to save settings
+            % so that they can be re-applied later using the method
+            % ai_recorder.loadSettings
+            %
+            % The created file will contains the fields: fname, dataType,
+            % channels, voltageRange, sampleRate, chanNames.
+            %
+            %
+            % Inputs
+            % fname - Relative or absolute path to the .mat file we will
+            %         save data to. Existing files of the same name will be
+            %         over-written without warning.
+            
+            metaData.fname = obj.fname;
+            metaData.dataType = obj.dataType;
+            metaData.AI_channels = obj.AI_channels;
+            metaData.voltageRange = obj.voltageRange;
+            metaData.sampleRate = obj.sampleRate;
+            metaData.chanNames = obj.chanNames;
+
+            save(fname,'metaData')
+
+        end % saveCurrentSettings
+    
+        function loadSettings(obj,fname)
+            % ai_recorder.loadSettings(fname) - load settings file
+            %
+            % Purpose
+            % Load DAQ settings and replace existing property values
+            % with those from the loaded structur. This is used to save
+            % values as a preference file so they can be quickly
+            % re-applied. Use ai_recoder.saveCurrentSettings to create the
+            % file. 
+            %
+            % The following fields will be replaced: dataType,
+            % AI_channels, voltageRange, sampleRate, chanNames.
+            %
+            %
+            % Inputs
+            % fname - Relative or absolute path to the .mat file we will
+            %         load data from. The file should contain a structure
+            %         called "metaData" with the fields listed above.
+            %         "fname" may also be a valid structure
+            % 
+            % Examples:
+            % >> AI.loadSettings('hello_meta.mat')
+            %   All settings updated
+            % >> load('hello_meta.mat')
+            % >> AI.loadSettings(metaData)
+            %   All settings updated
+            %
+            
+            if ischar(fname)
+                load(fname)
+                if ~exist('metaData','var')
+                    fprintf('No variable "metaData" found in file %s\n', fname)
+                    return
+                end
+            elseif isstruct(fname)
+                metaData = fname;
+            else
+                fprintf('ai_recorder.loadSettings - Input variable should be a string or a struct\n')
+                return
+            end
+            
+            
+            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames'};
+            n=0;
+            
+            for ii=1:length(fieldsToApply)
+                if ~isfield(metaData,fieldsToApply{ii})
+                    fprintf('No field "%s" found in loaded structure. Skipping!\n', fieldsToApply{ii})
+                    continue
+                end
+                obj.(fieldsToApply{ii}) = metaData.(fieldsToApply{ii});
+                n=n+1;
+            end
+            
+            if n==length(fieldsToApply)
+                fprintf('All settings updated\n')
+            end
+
+        end % loadSettings
         
+        function openFigureWindow(obj)
+            % ai_recorder.openFigureWindow - open figure window for data display.
+            %
+            % Purpose
+            % Open a figure window and configure it so that the recorder is 
+            % shutdown and acquisition stopped when the window is closed.
+            % The figure window is only opened if doesn't already exist.
+            obj.hFig = findobj(0, 'Tag', obj.figTagName);
+            if isempty(obj.hFig)
+                %If the figure does not exist, make it
+                obj.hFig = figure;
+                set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')                
+            end
+            
+            %Focus on the figure and clear it
+            figure(obj.hFig)
+            clf
+            obj.hAx = cla;
+            
+            obj.hFig.CloseRequestFcn = @obj.windowCloseFcn;
+        end % openFigureWindow
+    
+    end % Close methods
+    
+ 
+    
+
+    methods (Hidden)
+
+        function delete(obj)
+            fprintf('sitools.ai_recorder is shutting down\n')
+            obj.stop
+            delete(obj.hTask)
+            cellfun(@delete,obj.listeners)
+            delete(obj.hFig) % Closes the plot window             
+        end % destructor
         
+        function openFileForWriting(obj)
+            % Opens a data file for writing
+            if ~isempty(obj.fname) && ischar(obj.fname)
+                obj.fid=fopen(obj.fname,'w+');
+                
+                % Write the critical meta-data to a .mat file so it's
+                % possible to read the binary file
+                [thisDir,thisFname] = fileparts(obj.fname);
+                metaFname = fullfile(thisDir, [thisFname,'_meta.mat']);
+                obj.saveCurrentSettings(metaFname)               
+            
+                fprintf('Opened file %s for writing\n', obj.fname)
+                
+            else
+                obj.fid=-1;
+            end
+        end % openFileForWriting
+        
+        function closeDataLogFile(obj)
+            if obj.fid>-1
+                fclose(obj.fid);
+                obj.fid=-1;
+                obj.fname='';
+            end 
+        end % closeDataLogFile
+            
+        function reportError(~,ME)
+            % Reports error from error structure, ME
+            fprintf('ERROR: %s\n',ME.message)
+            for ii=1:length(ME.stack)
+                 fprintf(' on line %d of %s\n', ME.stack(ii).line,  ME.stack(ii).name)
+            end
+            fprintf('\n')
+        end % reportError
         
         % -----------------------------------------------------------
         % Callbacks
-
         function readData(obj,~,evt)
             % This callback function runs each time a pre-defined number of points have been collected
             % This is defined at the hTask.registerEveryNSamplesEvent method call.
@@ -154,9 +446,17 @@ classdef ai_recorder < sitools.si_linker
             
         function windowCloseFcn(obj,~,~)
             % This runs when the user closes the figure window.
+            % If data are being saved, a confirmation dialog opens.
+            if obj.fid>-1
+                reply=questdlg('Closing the window will stop data acquisition. Are you sure?','Are you sure?');
+                if ~strcmpi(reply,'Yes')
+                    return
+                end
+            end
             fprintf('Shutting down sitools.si_linker.\n')
             obj.delete % simply call the destructor
         end %close windowCloseFcn
+        
         
         function startWhenNotIdle(obj,~,~)
             % If ScanImage is connected and it starts imaging then
@@ -173,7 +473,7 @@ classdef ai_recorder < sitools.si_linker
                         if obj.hSI.hChannels.loggingEnable
                             thisFname = sprintf('AI_%s_%03d.bin', obj.hSI.hScan2D.logFileStem, obj.hSI.hScan2D.logFileCounter);
                             obj.fname = fullfile(obj.hSI.hScan2D.logFilePath,thisFname);
-                            obj.openFileForWriting;
+                            % File will automatically be opened when we start                            
                         end
                         obj.start; %start pulling in AI data
                     end
@@ -184,118 +484,6 @@ classdef ai_recorder < sitools.si_linker
                     obj.stop;
             end
         end % startWhenNotIdle
-        
-        
-            % -----------------------------------------------------------
-            % Short helper methods
-        function openFigureWindow(obj)
-            % Open a figure window and have it shut off the acquisition when closed
-            % Only opens the figure if doesn't already exist
-            obj.hFig = findobj(0, 'Tag', obj.figTagName);
-            if isempty(obj.hFig)
-                %If the figure does not exist, make it
-                obj.hFig = figure;
-                set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')                
-            end
-            
-            %Focus on the figure and clear it
-            figure(obj.hFig)
-            clf
-            obj.hAx = cla;
-            
-            obj.hFig.CloseRequestFcn = @obj.windowCloseFcn;
-        end % openFigureWindow
-        
-        function success=start(obj)
-            % Begin the task and so start the acquisition
-            
-            try
-                obj.hTask.start % Task will start right away if there are no triggers configured
-                if ~isempty(obj.hFig) && isvalid(obj.hFig)
-                    fprintf('Recording data on %s. Close window to stop.\n', obj.devName);
-                    if ~isempty(obj.fname)
-                        obj.hFig.Name=['SAVING TO: ',obj.fname];
-                    else
-                        obj.hFig.Name='AI recorder';
-                    end
-                else
-                    fprintf('Recording data on %s. use stop method to halt acqusition.\n', obj.devName);
-                end
-                success=true;
-            catch ME
-                obj.reportError(ME)
-                success=false;
-            end
-        end % start
-              
-        function success=stop(obj)
-            % Stop the DAQ task and close the data file
-            try
-                obj.hTask.stop;
-                obj.closeDataLogFile
-                success=true;
-            catch ME
-                obj.reportError(ME)
-                success=false;
-            end
-        end
-        
-        function connectAndStart(obj)
-            % Connect to the DAQ and start
-            obj.connectToDAQ;
-            obj.start;
-        end
-
-    end % Close methods
-    
- 
-    
-    methods (Hidden)
-                
-        function openFileForWriting(obj)
-            % Opens a data file for writing
-            if ~isempty(obj.fname)
-                obj.fid=fopen(obj.fname,'w+');
-                
-                % Write the critical meta-data to a .mat file so it's
-                % possible to read the binary file
-                [thisDir,thisFname] = fileparts(obj.fname);
-                metaFname = fullfile(thisDir, [thisFname,'_meta.mat']);
-                
-               
-                metaData.fname = obj.fname;
-                metdData.dataType = obj.dataType;
-                metaData.channels = obj.AI_channels;
-                metaData.voltageRange = obj.voltageRange;
-                metaData.sampleRate = obj.sampleRate;
-                metaData.chanNames = obj.chanNames;
-            
-                save(metaFname,'metaData')
-                fprintf('Opened file %s for writing\n', obj.fname)
-                
-            else
-                obj.fid=-1;
-            end
-        end % openFileForWriting
-        
-        function closeDataLogFile(obj)
-            if obj.fid>-1
-                fclose(obj.fid);
-                obj.fid=-1;
-                obj.fname='';
-            end 
-        end % closeDataLogFile
-            
-        function reportError(~,ME)
-            % Reports error from error structure, ME
-            fprintf('ERROR: %s\n',ME.message)
-            for ii=1:length(ME.stack)
-                 fprintf(' on line %d of %s\n', ME.stack(ii).line,  ME.stack(ii).name)
-            end
-            fprintf('\n')
-        end % reportError
-        
-
         
     end % Close hidden methods
 

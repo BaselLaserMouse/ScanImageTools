@@ -99,11 +99,10 @@ classdef ai_recorder < sitools.si_linker
         taskName = 'airecorder' % Name for the task
         fid = -1  % File handle to which we will write data
         data      % We hold data to be plotted here
-        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
+        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points    
     end % Close hidden properties
 
-
-
+    
     methods
 
         function obj = ai_recorder(linkToScanImage)
@@ -492,14 +491,22 @@ classdef ai_recorder < sitools.si_linker
                     obj.stop;
             end
         end % startWhenNotIdle
-
-        % setters
-        fuction set.numPointsInPlot(obj)
-            if obj.numPointsInPlot<obj.sampleRate
+    end % Close hidden methods  
+    
+    
+    % getters and setters
+    methods
+        
+        function set.numPointsInPlot(obj,val)
+            if val < obj.sampleRate
                 fprintf('numPointsInPlot can not be smaller than the sample rate. Setting to the sample rate\n');
-                obj.numPointsInPlot=obj.sampleRate;
+                obj.numPointsInPlot = obj.sampleRate;
+            else
+                obj.numPointsInPlot=val;
             end
         end
-    end % Close hidden methods
+     
+    end % Getters and setters
+
 
 end % Close sitools.ai_recorder

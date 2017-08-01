@@ -82,7 +82,7 @@ classdef ai_recorder < sitools.si_linker
         AI_channels = 0:7 % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5  % Scalar defining the range over which data will be digitized
         sampleRate = 1E3  % Analog input sample Rate in Hz
-        sampleReadSize = 1000  % Read off this many samples then plot and log to disk
+        sampleReadSize = 500  % Read off this many samples then plot and log to disk
 
         % Saving and data configuration
         fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
@@ -425,11 +425,9 @@ classdef ai_recorder < sitools.si_linker
 
             % Always keep the most recent points
             if size(obj.data,1)>obj.numPointsInPlot
-                obj.data=obj.data(end:end-obj.numPointsInPlot,:);
+                obj.data(1:size(obj.data,1)-obj.numPointsInPlot,:)=[];
             end
-
-
-
+            
             errorMessage = evt.errorMessage;
 
             % check for errors and close the task if any occur. 
@@ -437,14 +435,14 @@ classdef ai_recorder < sitools.si_linker
                 obj.delete
                 error(errorMessage);
             else
-                if isempty(obj.data)
-                    fprintf('Input buffer is empty\n' );
+                if isempty(evt.data)
+                    fprintf('Input buffer is empty!\n' );
                 else
                     if ~isempty(obj.hAx) && isvalid(obj.hAx)
                        plot(obj.hAx,obj.data) % Plot into the figure axes if they exist
                     end
                     if obj.fid>=0
-                        fwrite(obj.fid, obj.data', obj.dataType);
+                        fwrite(obj.fid, evt.data', obj.dataType);
                     end
                 end
             end

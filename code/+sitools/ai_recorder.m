@@ -135,7 +135,7 @@ classdef ai_recorder < sitools.si_linker
         end %constructor
 
 
-        function success=connectToDAQ(obj)
+        function varargout=connectToDAQ(obj)
             % ai_recorder.connectToDAQ - Connect to the DAQ using the object properties
             %
             % Purpose
@@ -177,13 +177,17 @@ classdef ai_recorder < sitools.si_linker
                 obj.reportError(ME)
                 success=false;
             end
+            
+            if nargout>0
+                varargout{1}=success;
+            end
         end % connectToDAQ
 
 
 
         % -----------------------------------------------------------
         % Short helper methods
-        function success=start(obj)
+        function varargout=start(obj)
             % ai_recorder.start - begin acquiring data
             %
             % Purpose
@@ -217,9 +221,13 @@ classdef ai_recorder < sitools.si_linker
                 obj.reportError(ME)
                 success=false;
             end
+        
+            if nargout>0
+                varargout{1}=success;
+            end            
         end % start
 
-        function success=stop(obj)
+        function varargout=stop(obj)
             % ai_recorder.stop - stop the acquisition and close any open data logging files
             %
             % Purpose
@@ -242,6 +250,10 @@ classdef ai_recorder < sitools.si_linker
                 obj.reportError(ME)
                 success=false;
             end
+        
+            if nargout>0
+                varargout{1}=success;
+            end
         end
 
         function connectAndStart(obj)
@@ -250,8 +262,8 @@ classdef ai_recorder < sitools.si_linker
             % Purpose
             % simply runs the connect method and then start method
 
-            obj.connectToDAQ;
-            obj.start;
+            obj.connectToDAQ
+            obj.start
         end
 
         function saveCurrentSettings(obj,fname)

@@ -178,8 +178,20 @@ classdef monitor_blanker < sitools.si_linker
             obj.start;
         end
 
-        function buildWaveform(obj)
+        function buildWaveform(obj,pulseDuration,offset)
             % Build a single waveform to be played out at a sample rate defined by obj.sampelRate
+            maxPoints = round((1/obj.scannerFrequency)*1E6);
+
+            if nargin>1
+                  targetWaveLength = round(maxPoints)-2;
+                  obj.pulseDuration1 = offset;
+                  obj.pulseDuration2 = pulseDuration;
+                  space = ceil((targetWaveLength - pulseDuration*2)/2);
+                  obj.pulseSpacing1 = space;
+                  obj.pulseSpacing2 = space;
+              end
+
+
 
             %Build the blanking waveform
             blankWaveform = [...
@@ -190,7 +202,6 @@ classdef monitor_blanker < sitools.si_linker
                 repmat(0,obj.pulseSpacing2,1); ...
                 obj.endState];
 
-            maxPoints = round((1/obj.scannerFrequency)*1E6);
             if length(blankWaveform)>maxPoints
                 fprintf('WAVEFORM IS LONGER THAN SCAN PERIOD! TRUNCATING TO %d \n', maxPoints)
                 blankingWaveform= blankWaveform(1:maxPoints);

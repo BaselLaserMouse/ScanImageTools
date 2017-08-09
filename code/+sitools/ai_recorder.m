@@ -419,14 +419,6 @@ classdef ai_recorder < sitools.si_linker
             end
         end % closeDataLogFile
 
-        function reportError(~,ME)
-            % Reports error from error structure, ME
-            fprintf('ERROR: %s\n',ME.message)
-            for ii=1:length(ME.stack)
-                 fprintf(' on line %d of %s\n', ME.stack(ii).line,  ME.stack(ii).name)
-            end
-            fprintf('\n')
-        end % reportError
 
         % -----------------------------------------------------------
         % Callbacks

@@ -15,26 +15,29 @@ classdef monitor_blanker < sitools.si_linker
     properties
 
         % DAQmx Task configuration
-        hTaskDO % The DAQmx digital output task handle is stored here
+        hTask % The DAQmx digital output task handle is stored here
 
-        devName = 'aux' % Name of the DAQ device to which we will connect
+        devName = 'galvo' % Name of the DAQ device to which we will connect
 
         % Pulse timing (values in microseconds)
         initialDelay = 0
-        pulseDuration1 = 2
+        pulseDuration1 = 5
         pulseSpacing1 = 31
         pulseDuration2 = 10
         pulseSpacing2 = 31
         endState = 1
 
+        PMTblankLatency = 1 % This will blank the PMTs 1 ms before the monitor goes on and re-enable them 1 ms after it switches off
+
         % Channel parameters
-        outputLine = 'port0/line1'
+        monitorBlank_DO_Line = 'port0/line1'
+        PMT_Blank_DO_Line = 'port0/line2' % The opposite of the monitor blank with a latency differenc in ms
 
         % Trigger parameters
-        clockInput = 'PFI15'
-        triggerEdge = 'falling'
+        triggerChannel = 'PFI0' % If we run off the board that receives the resonant line trigger
+        triggerEdge = 'DAQmx_Val_Falling'
 
-
+        scannerFrequency = 12E3 % We can read this from ScanImage too
         hFig % The figure/GUI handle
 
     end % Close properties
@@ -42,11 +45,11 @@ classdef monitor_blanker < sitools.si_linker
     properties (Hidden)
         figTagName = 'monitor_blanker' % Tag for the figure/GUI window
         hAx % Figure axis handle
-        DO_taskName = 'monitorblanker_DO' % Name for the digital task
+        taskName = 'monitorblanker_DO1' % Name for the digital task
         waveform %The waveform we will play out of the DO
     end % Close hidden properties
 
-    properties(Hidden,SetAccess=Protected)
+    properties(Hidden,SetAccess=protected)
         sampleRate = 1E6 % Do not change this unless you know what you're doing
         clockSource = '' % clock source should be the built-in digital souce
     end
@@ -65,9 +68,8 @@ classdef monitor_blanker < sitools.si_linker
                 linkToScanImage=true;
             end
 
-            obj.buildWaveform;
             obj.connectToDAQ;
-            obj.start;
+            %obj.start;
         end %constructor
 
 
@@ -79,6 +81,9 @@ classdef monitor_blanker < sitools.si_linker
             % parameters described in the properties of this class. i.e.
             % devName - the name of the NI device
 
+            % Create waveforms based on the trigger paramaters
+            obj.buildWaveform;
+            
             if ~isempty(obj.hTask)
                 fprintf('Not connecting to NI DAQ device "%s". sitools.monitor_blanking has already connected to the DAQ\n',...
                     obj.devName)
@@ -91,9 +96,9 @@ classdef monitor_blanker < sitools.si_linker
                 obj.hTask = dabs.ni.daqmx.Task(obj.taskName); 
 
 
-                % * Set up a digital output
-                obj.hTask.createDOChan(obj.devName,obj.outputLine);
-
+                % * Set up the digital outputs
+                obj.hTask.createDOChan(obj.devName,obj.monitorBlank_DO_Line);
+                obj.hTask.createDOChan(obj.devName,obj.PMT_Blank_DO_Line);
 
                 % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
                 %bufferSize_numSamplesPerChannel = 40*obj.sampleReadSize; % The number of samples to be stored in the buffer per channel. 
@@ -101,19 +106,15 @@ classdef monitor_blanker < sitools.si_linker
 
 
                 % Set up the sample clock at obj.sampleRate 
-                obj.hTask.cfgSampClkTiming(obj.sampleRate,'DAQmx_Val_FiniteSamps',length(obj.waveform) ); %,sampleClockSource);
-                obj.hTask.cfgOutputBuffer(length(obj.waveform));
+                obj.hTask.cfgSampClkTiming(obj.sampleRate,'DAQmx_Val_FiniteSamps',size(obj.waveform,1)*2); %,sampleClockSource);
+                obj.hTask.cfgOutputBuffer(size(obj.waveform,1)*2);
 
-                % Create waveforms based on the trigger paramaters
 
-                % make it re-triggerable, finite samples trigger source,
-                
                 % * Define the channel on which we listen for triggers and set task as retriggerable                
-                obj.hTask.cfgDigEdgeStartTrig(triggerChannel,'DAQmx_Val_Rising');
+                obj.hTask.cfgDigEdgeStartTrig(obj.triggerChannel,obj.triggerEdge);
                 obj.hTask.set('startTrigRetriggerable',1); 
 
-                obj.hTask.writeDigitalData(obj.waveform)
-
+                obj.hTask.writeDigitalData(obj.waveform,[],false); % False means no auto-start
 
                 success=true;
             catch ME
@@ -173,21 +174,48 @@ classdef monitor_blanker < sitools.si_linker
         function restart(obj)
             % Use to re-start acquisition when the user changes parameters
             obj.stop;
-            obj.buildWaveform;
             obj.connectToDAQ;
             obj.start;
         end
 
         function buildWaveform(obj)
             % Build a single waveform to be played out at a sample rate defined by obj.sampelRate
-            obj.waveform = [...
-                repmat(0,1,obj.initialDelay), ...
-                repmat(1,1,obj.pulseDuration1), ...
-                repmat(0,1,obj.pulseSpacing1), ...
-                repmat(1,1,obj.pulseDuration2), ...
-                repmat(0,1,obj.pulseSpacing2), ...
+
+            %Build the blanking waveform
+            blankWaveform = [...
+                repmat(0,obj.initialDelay,1); ...
+                repmat(1,obj.pulseDuration1,1); ...
+                repmat(0,obj.pulseSpacing1,1); ...
+                repmat(1,obj.pulseDuration2,1); ...
+                repmat(0,obj.pulseSpacing2,1); ...
                 obj.endState];
-            ]
+
+            maxPoints = round((1/obj.scannerFrequency)*1E6);
+            if length(blankWaveform)>maxPoints
+                fprintf('WAVEFORM IS LONGER THAN SCAN PERIOD! TRUNCATING TO %d \n', maxPoints)
+                blankingWaveform= blankWaveform(1:maxPoints);
+            else
+                fprintf('New waveform is of length %d\n', length(blankWaveform))
+            end
+
+
+            PMTpreceed = 1;
+            PMTwaveform = [...
+                repmat(1,obj.initialDelay,1); ...
+                repmat(0,obj.pulseDuration1+PMTpreceed,1); ...
+                repmat(1,obj.pulseSpacing1-PMTpreceed-1,1); ...
+                repmat(0,obj.pulseDuration2+PMTpreceed+1,1); ...
+                repmat(1,obj.pulseSpacing2-PMTpreceed,1); ...
+                obj.endState];
+
+            if length(PMTwaveform) ~= length(blankWaveform)
+                fprintf('PMT length=%d but blank length=%d. Setting PMT to inverse of blank.\n',...
+                    length(PMTwaveform), length(blankWaveform))
+                PMTwaveform = ~blankWaveform;
+            end
+            obj.waveform = [blankWaveform,PMTwaveform];
+            %obj.waveform(:,2) = circshift(obj.waveform(:,2),1);
+            plot(obj.waveform,'o-')
         end
 
 
@@ -200,7 +228,7 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.initialDelay = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.pulseDuration1(obj,value)
@@ -208,7 +236,7 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.pulseDuration1 = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.pulseSpacing1(obj,value)
@@ -216,7 +244,7 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.pulseSpacing1 = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.pulseDuration2(obj,value)
@@ -224,7 +252,7 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.pulseDuration2 = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.pulseSpacing2(obj,value)
@@ -232,7 +260,7 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.pulseSpacing2 = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.endState(obj,value)
@@ -240,25 +268,28 @@ classdef monitor_blanker < sitools.si_linker
                 return
             end
             obj.endState = value;
-            obj.restart
+            obj.regnerateWaveforms
         end
 
         function set.triggerEdge(obj,value)
-            if strcmp(value,'falling') && strcmp(value,'rising')
+            if strcmp(value,'DAQmx_Val_Falling') && strcmp(value,'DAQmx_Val_Rising')
                 return
             end
             obj.triggerEdge = value;
-            obj.restart
+            obj.stop;
+            obj.hTask.cfgDigEdgeStartTrig(obj.triggerChannel,obj.triggerEdge);
+            obj.start;
         end
 
-        function set.outputLine(obj,value)
-            obj.outputLine = value;
-            obj.restart
+        function set.monitorBlank_DO_Line(obj,value)
+            fprintf('You need to close and start the object to change this value\n')
         end
 
-        function set.clockInput(obj,value)
-            obj.clockInput = value;
-            obj.restart
+        function set.triggerChannel(obj,value)
+            obj.triggerChannel = value;
+            obj.stop;
+            obj.hTask.cfgDigEdgeStartTrig(obj.triggerChannel,obj.triggerEdge);
+            obj.start;
         end
 
     end % Close methods
@@ -273,10 +304,44 @@ classdef monitor_blanker < sitools.si_linker
             obj.stop
             delete(obj.hTask)
             cellfun(@delete,obj.listeners)
-            if isempty(obj.hFig) && isvalid(obj.hFig)
+            if ~isempty(obj.hFig) && isvalid(obj.hFig)
                 delete(obj.hFig) % Closes the plot window
             end
         end % destructor
+
+        function regnerateWaveforms(obj)
+            % Regenerates the blanking waveforms and sends these to the device buffer. This method
+            % is used when a waveform parameter is changed in order to immediately re-set the waveforms.
+
+            obj.stop;
+            obj.buildWaveform;
+
+            try
+                % Set the buffer size
+                nSamples=size(obj.waveform,1);
+
+                % We must unreserve the DAQ device before writing to the buffer:
+                % https://forums.ni.com/t5/Multifunction-DAQ/How-to-flush-output-buffer-optionally-resize-it-and-write-to-it/td-p/3138640
+                obj.hTask.control('DAQmx_Val_Task_Unreserve') 
+
+                obj.hTask.cfgSampClkTiming(obj.sampleRate, 'DAQmx_Val_FiniteSamps', nSamples);
+                obj.hTask.cfgOutputBuffer(nSamples);
+ 
+                % Write data to the start of the buffer
+
+
+                % Write the waveform to the buffer
+                obj.hTask.writeDigitalData(obj.waveform, [], false);
+
+            catch ME
+                obj.reportError(ME)
+                obj.delete
+                return
+            end
+
+            obj.start;
+
+        end % close regnerateWaveforms
 
     end % Close hidden methods
 

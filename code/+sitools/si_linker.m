@@ -43,7 +43,17 @@ classdef si_linker < handle
             obj.hSI=API; % Make composite object
             
         end % linkToScanImageAPI
+
                     
+        function reportError(~,ME)
+            % Reports error from error structure, ME
+            fprintf('ERROR: %s\n',ME.message)
+            for ii=1:length(ME.stack)
+                 fprintf(' on line %d of %s\n', ME.stack(ii).line,  ME.stack(ii).name)
+            end
+            fprintf('\n')
+        end % reportError
+
 
     end % Close methods
     

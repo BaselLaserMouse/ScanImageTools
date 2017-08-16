@@ -73,6 +73,8 @@ classdef ai_recorder < sitools.si_linker
     %
     % 
     % Also see:
+    % To read in data: readAIrecorderBinFile
+    %
     % https://github.com/tenss/MatlabDAQmx
 
     properties (SetAccess=protected, Hidden=false)
@@ -97,7 +99,7 @@ classdef ai_recorder < sitools.si_linker
         AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5  % Scalar defining the range over which data will be digitized
         sampleRate = 1E3  % Analog input sample Rate in Hz
-        sampleReadSize = 500  % Read off this many samples then plot and log to disk
+        sampleReadSize = 250  % Read off this many samples then plot and log to disk
     end 
 
     properties (SetObservable)
@@ -149,7 +151,7 @@ classdef ai_recorder < sitools.si_linker
                 obj.openFigureWindow % To display data as they come in
                 obj.connectToDAQ;
                 if obj.linkToScanImageAPI
-                    obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startWhenNotIdle);
+                    obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startStopAcqWithScanImage);
                 end
                 obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
                 obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
@@ -522,7 +524,7 @@ classdef ai_recorder < sitools.si_linker
         end %close windowCloseFcn
 
 
-        function startWhenNotIdle(obj,~,~)
+        function startStopAcqWithScanImage(obj,~,~)
             % If ScanImage is connected and it starts imaging then
             % acquisition starts. If a file is being saved in ScanImage
             % then this causes this class to save data to dosk
@@ -547,7 +549,7 @@ classdef ai_recorder < sitools.si_linker
                 case 'idle'
                     obj.stop;
             end
-        end % startWhenNotIdle
+        end % startStopAcqWithScanImage
 
 
         function [p,n]=numSubPlots(~,n)

@@ -11,7 +11,7 @@ classdef ai_recorder < sitools.si_linker
     % a similar file name to the ScanImage TIFF. 
     %
     % Getting Help
-    % Try "doc(sitools.ai_recorder" and also look at the help text for the
+    % Try "doc sitools.ai_recorder" and also look at the help text for the
     % following methods of this function:
     % sitools.ai_recorder.linkToScanImageAPI
     % sitools.ai_recorder.connectToDAQ
@@ -74,32 +74,46 @@ classdef ai_recorder < sitools.si_linker
     % Also see:
     % https://github.com/tenss/MatlabDAQmx
 
-    properties
+    properties (SetAccess=protected, Hidden=false)
 
-        % DAQmx Task configuration
+        % DAQmx Task configuration (these values are read on startup only)
+        % CAUTION: Do not edit these values here for your experiment. Change 
+        %          the properties in the live object and use the saveCurrentSettings
+        %          and loadCurrentSettingsMethods
+
         hTask % The DAQmx task handle is stored here
         devName = 'aux' % Name of the DAQ device to which we will connect
-        AI_channels = 0:7 % Analog input channels from which to acquire data. e.g. 0:3
+        AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5  % Scalar defining the range over which data will be digitized
         sampleRate = 1E3  % Analog input sample Rate in Hz
         sampleReadSize = 500  % Read off this many samples then plot and log to disk
-
-        % Saving and data configuration
-        fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
         chanNames = {}; % Cell array describing the channes. e.g. {'valve', 'trigger', 'frame_clock'}
         dataType = 'int16' % The format we will write the data in to binary file ai_recorder.fname
+    end 
 
+    properties
+        % Saving and data configuration
+        fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
         hFig % The figure/GUI handle
+    end 
 
-    end % Close properties
+    properties (SetObservable)
+        yMax % This is a vector of ylim values. The first subplot will have a max range of obj.yMax(1);
+             % By default obj.yMax = repmat(obj.voltageRange,1,length(obj.AI_channels)). However, you can
+             % modify it and save/reload values from a settings file. 
+        yMin % Same as yMax but for the minimum y value. By default this is 
+             % repmat(-obj.voltageRange,1,length(obj.AI_channels))
+    end
+
 
     properties (Hidden)
         figTagName = 'ai_recorder' % Tag for the figure/GUI window
-        hAx % Figure axis handle
         taskName = 'airecorder' % Name for the task
+        subplots % Cell array of handles for the subplots (one per input channel)
+        pltData % Cell array of plot objects (one per subplot)
         fid = -1  % File handle to which we will write data
         data      % We hold data to be plotted here
-        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points    
+        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
     end % Close hidden properties
 
     
@@ -128,9 +142,13 @@ classdef ai_recorder < sitools.si_linker
             if linkToScanImage
                 obj.openFigureWindow % To display data as they come in
                 obj.connectToDAQ;
-                obj.linkToScanImageAPI;  
-                obj.listeners{1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startWhenNotIdle);
+                if obj.linkToScanImageAPI
+                    obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startWhenNotIdle);
+                end
+                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
+                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
             end
+
 
         end %constructor
 
@@ -160,7 +178,7 @@ classdef ai_recorder < sitools.si_linker
                 obj.hTask = dabs.ni.daqmx.Task(obj.taskName); 
 
                 % * Set up analog inputs
-                obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, 'DAQmx_Val_NRSE', obj.voltageRange*-1, obj.voltageRange);
+                obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, obj.chanNames, obj.voltageRange*-1, obj.voltageRange,[],[],'DAQmx_Val_NRSE');
 
 
                 % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
@@ -291,6 +309,8 @@ classdef ai_recorder < sitools.si_linker
             metaData.voltageRange = obj.voltageRange;
             metaData.sampleRate = obj.sampleRate;
             metaData.chanNames = obj.chanNames;
+            metaData.yMax = obj.yMax;
+            metaData.yMin = obj.yMin;
 
             save(fname,'metaData')
 
@@ -338,7 +358,7 @@ classdef ai_recorder < sitools.si_linker
             end
 
 
-            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames'};
+            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax'};
             n=0;
 
             for ii=1:length(fieldsToApply)
@@ -363,6 +383,8 @@ classdef ai_recorder < sitools.si_linker
             % Open a figure window and configure it so that the recorder is
             % shutdown and acquisition stopped when the window is closed.
             % The figure window is only opened if doesn't already exist.
+            % The y-axis limits are read from the two properties (yMin and yMax)
+            % and applied. They can also be applied on the fly.
             obj.hFig = findobj(0, 'Tag', obj.figTagName);
             if isempty(obj.hFig)
                 %If the figure does not exist, make it
@@ -370,11 +392,27 @@ classdef ai_recorder < sitools.si_linker
                 set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')                
             end
 
+
             %Focus on the figure and clear it
             figure(obj.hFig)
             clf
-            obj.hAx = cla;
 
+            %Make the subplots
+            if isempty(obj.yMax)
+                obj.yMax = repmat(obj.voltageRange,1,length(obj.AI_channels));
+            end
+            if isempty(obj.yMin)
+                obj.yMin = repmat(-obj.voltageRange,1,length(obj.AI_channels));
+            end
+
+            n=obj.numSubPlots(length(obj.AI_channels));
+            for ii=1:length(obj.AI_channels)                
+                obj.subplots{ii} = subplot(n(1),n(2),ii);
+                obj.pltData{ii}  = plot(zeros(100,1));
+                grid on
+            end
+
+            obj.setPlotLimits;
             obj.hFig.CloseRequestFcn = @obj.windowCloseFcn;
         end % openFigureWindow
 
@@ -442,8 +480,11 @@ classdef ai_recorder < sitools.si_linker
                 if isempty(evt.data)
                     fprintf('Input buffer is empty!\n' );
                 else
-                    if ~isempty(obj.hAx) && isvalid(obj.hAx)
-                       plot(obj.hAx,obj.data) % Plot into the figure axes if they exist
+
+                    for ii=1:size(obj.data,2)
+                        if ~isempty(obj.subplots{ii}) && isvalid(obj.subplots{ii})
+                            obj.pltData{ii}.YData=obj.data(:,ii); % Plot into the figure axes if they exist
+                        end
                     end
                     if obj.fid>=0
                         fwrite(obj.fid, evt.data', obj.dataType);
@@ -493,12 +534,95 @@ classdef ai_recorder < sitools.si_linker
                     obj.stop;
             end
         end % startWhenNotIdle
+
+
+        function [p,n]=numSubPlots(~,n)
+            % function [p,n]=numSubPlots(n)
+            %
+            % Purpose
+            % Calculate how many rows and columns of sub-plots are needed to
+            % neatly display n subplots. 
+            %
+            % Inputs
+            % n - the desired number of subplots.     
+            %  
+            % Outputs
+            % p - a vector length 2 defining the number of rows and number of
+            %     columns required to show n plots.     
+            % [ n - the current number of subplots. This output is used only by
+            %       this function for a recursive call.]
+            %
+            %
+            %
+            % Example: neatly lay out 13 sub-plots
+            % >> p=numSubPlots(13)
+            % p = 
+            %     3   5
+            % for i=1:13; subplot(p(1),p(2),i), pcolor(rand(10)), end 
+                 
+            while isprime(n) & n>4, 
+                n=n+1;
+            end
+
+            p=factor(n);
+
+            if length(p)==1
+                p=[1,p];
+                return
+            end
+
+            while length(p)>2
+                if length(p)>=4
+                    p(1)=p(1)*p(end-1);
+                    p(2)=p(2)*p(end);
+                    p(end-1:end)=[];
+                else
+                    p(1)=p(1)*p(2);
+                    p(2)=[];
+                end    
+                p=sort(p);
+            end
+
+
+            %Reformat if the column/row ratio is too large: we want a roughly
+            %square design 
+            while p(2)/p(1)>2.5
+                N=n+1;
+                [p,n]=obj.numSubPlots(N); %Recursive!
+            end
+
+        end %numSubPlots
+
+        function setPlotLimits(obj,~,~)
+            % This listener callback runs whenever the user changes a desired plot limit.
+            for ii=1:length(obj.subplots)
+
+                if length(obj.yMin)>=ii %check a value exists for this axis
+                    ymin = obj.yMin(ii);
+                else
+                    ymin = -obj.voltageRange;
+                end
+
+                if length(obj.yMax)>=ii
+                    ymax = obj.yMax(ii);
+                else
+                    ymax = obj.voltageRange;
+                end
+
+                obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
+            end
+        end
+        function setPlotTitlesFromChanNames(obj,~,~)
+            for ii=1:length(obj.subplots)
+                if length(obj.yMin)
+                end
+            end
+        end % setPlotTitlesFromChanNames
     end % Close hidden methods  
     
     
     % getters and setters
     methods
-        
         function set.numPointsInPlot(obj,val)
             if val < obj.sampleRate
                 fprintf('numPointsInPlot can not be smaller than the sample rate. Setting to the sample rate\n');
@@ -507,7 +631,7 @@ classdef ai_recorder < sitools.si_linker
                 obj.numPointsInPlot=val;
             end
         end
-     
+
     end % Getters and setters
 
 

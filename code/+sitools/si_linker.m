@@ -1,7 +1,9 @@
 classdef si_linker < handle
-    % Provides methods for finding the ScanImage API object and
-    % incorporating it into a class
+    % Tools for finding the ScanImage API object and incorporating it into a class
     %
+    % 
+    %
+    % 
     % sitools.si_linker
     
     properties (Hidden)
@@ -22,10 +24,11 @@ classdef si_linker < handle
             obj.hSI=[];
         end % Destructor
         
-        function linkToScanImageAPI(obj)
+        function success = linkToScanImageAPI(obj)
             % Link to ScanImage API by importing from base workspace and
             % copying handling to obj.hSI
 
+            success=false;
             W = evalin('base','whos');
             SIexists = ismember(obj.scanimageObjectName,{W.name});
             
@@ -41,7 +44,7 @@ classdef si_linker < handle
             end
 
             obj.hSI=API; % Make composite object
-            
+            success=true;
         end % linkToScanImageAPI
 
                     

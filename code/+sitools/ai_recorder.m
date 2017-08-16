@@ -77,17 +77,7 @@ classdef ai_recorder < sitools.si_linker
 
     properties (SetAccess=protected, Hidden=false)
 
-        % DAQmx Task configuration (these values are read on startup only)
-        % CAUTION: Do not edit these values here for your experiment. Change 
-        %          the properties in the live object and use the saveCurrentSettings
-        %          and loadCurrentSettingsMethods
-
         hTask % The DAQmx task handle is stored here
-        devName = 'Dev1' % Name of the DAQ device to which we will connect
-        AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
-        voltageRange = 5  % Scalar defining the range over which data will be digitized
-        sampleRate = 1E3  % Analog input sample Rate in Hz
-        sampleReadSize = 500  % Read off this many samples then plot and log to disk
         dataType = 'int16' % The format we will write the data in to binary file ai_recorder.fname
     end 
 
@@ -95,6 +85,19 @@ classdef ai_recorder < sitools.si_linker
         % Saving and data configuration
         fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
         hFig % The figure/GUI handle
+
+        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
+
+        % DAQmx Task configuration (these values are read on startup only)
+        % CAUTION: Do not edit these values here for your experiment. Change 
+        %          the properties in the live object and use the saveCurrentSettings
+        %          and loadCurrentSettingsMethods
+
+        devName = 'Dev1' % Name of the DAQ device to which we will connect
+        AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
+        voltageRange = 5  % Scalar defining the range over which data will be digitized
+        sampleRate = 1E3  % Analog input sample Rate in Hz
+        sampleReadSize = 500  % Read off this many samples then plot and log to disk
     end 
 
     properties (SetObservable)
@@ -115,8 +118,7 @@ classdef ai_recorder < sitools.si_linker
         pltData % Cell array of plot objects (one per subplot)
         titles %plot titles
         fid = -1  % File handle to which we will write data
-        data      % We hold data to be plotted here
-        numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
+        data      % We hold data to be plotted here        
     end % Close hidden properties
 
     
@@ -311,12 +313,14 @@ classdef ai_recorder < sitools.si_linker
             % Example
             % obj.saveCurrentSettings('myFileName')
 
+            metaData.devName = obj.devName;
             metaData.fname = obj.fname;
             metaData.dataType = obj.dataType;
             metaData.AI_channels = obj.AI_channels;
             metaData.voltageRange = obj.voltageRange;
             metaData.sampleRate = obj.sampleRate;
             metaData.chanNames = obj.chanNames;
+            metaData.numPointsInPlot = obj.numPointsInPlot;
             metaData.yMax = obj.yMax;
             metaData.yMin = obj.yMin;
 
@@ -366,7 +370,7 @@ classdef ai_recorder < sitools.si_linker
             end
 
 
-            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax'};
+            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax','yMin','devName', 'numPointsInPlot'};
             n=0;
 
             for ii=1:length(fieldsToApply)
@@ -626,7 +630,7 @@ classdef ai_recorder < sitools.si_linker
         function setPlotTitlesFromChanNames(obj,~,~)
             for ii=1:length(obj.subplots)
                 if length(obj.chanNames)>=ii && ~isempty(obj.chanNames{ii})
-                    obj.titles{ii}.String = obj.chanNames{ii};
+                    obj.titles{ii}.String = sprintf('AI%d %s', obj.AI_channels(ii), obj.chanNames{ii});
                 else
                     obj.titles{ii}.String = sprintf('AI %d', obj.AI_channels(ii));
                 end

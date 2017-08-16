@@ -46,7 +46,8 @@ classdef ai_recorder < sitools.si_linker
     %  >> AI = sitools.ai_recorder(false) %false so it does not attach to ScanImage
     %
     %  b. Set any desired properties then start
-    %  >> AI.AI_channels=0:1 % acquire data on first two channels
+    %  >> AI.devName = 'auxDevice';
+    %  >> AI.AI_channels=0:1; % acquire data on first two channels
     %  >> AI.voltageRange=1  % over +/- 1 volt
     %  >> obj.openFigureWindow % To display data as they come in
     %  >> AI.connectAndStart % begin acquisition
@@ -82,12 +83,11 @@ classdef ai_recorder < sitools.si_linker
         %          and loadCurrentSettingsMethods
 
         hTask % The DAQmx task handle is stored here
-        devName = 'aux' % Name of the DAQ device to which we will connect
+        devName = 'Dev1' % Name of the DAQ device to which we will connect
         AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5  % Scalar defining the range over which data will be digitized
         sampleRate = 1E3  % Analog input sample Rate in Hz
         sampleReadSize = 500  % Read off this many samples then plot and log to disk
-        chanNames = {}; % Cell array describing the channes. e.g. {'valve', 'trigger', 'frame_clock'}
         dataType = 'int16' % The format we will write the data in to binary file ai_recorder.fname
     end 
 
@@ -103,6 +103,8 @@ classdef ai_recorder < sitools.si_linker
              % modify it and save/reload values from a settings file. 
         yMin % Same as yMax but for the minimum y value. By default this is 
              % repmat(-obj.voltageRange,1,length(obj.AI_channels))
+        chanNames = {}; % Cell array describing the channes. e.g. {'valve', 'trigger', 'frame_clock'}. 
+                        % Auto-generated if left blank
     end
 
 
@@ -111,6 +113,7 @@ classdef ai_recorder < sitools.si_linker
         taskName = 'airecorder' % Name for the task
         subplots % Cell array of handles for the subplots (one per input channel)
         pltData % Cell array of plot objects (one per subplot)
+        titles %plot titles
         fid = -1  % File handle to which we will write data
         data      % We hold data to be plotted here
         numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
@@ -123,12 +126,13 @@ classdef ai_recorder < sitools.si_linker
             % sitools.ai_recorder
             %
             % Inputs
-            % linkToScanImage - true by default. If true, we attempt to
-            %             connect to ScanImage so that analog data are
-            %             acquired whenver Focus or Grab are pressed. If
-            %             linkToScanImage is false, this is not done. If
-            %             linkToScanImage is a string, we treat it as a
-            %             preference file name and attempt to load it. 
+            % linkToScanImage - true by default. 
+            %           * If true, we attempt to connect to ScanImage so that analog data are
+            %            acquired whenver Focus or Grab are pressed. 
+            %           * If linkToScanImage is false, this is not done. Nothing is connectd or 
+            %             started. Use this to set parameters. 
+            %           * If linkToScanImage is a string, we treat it as a preference file name 
+            %             and attempt to load it. 
 
             if nargin<1
                 linkToScanImage=true;
@@ -147,6 +151,7 @@ classdef ai_recorder < sitools.si_linker
                 end
                 obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
                 obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
+                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'chanNames', 'PostSet', @obj.setPlotTitlesFromChanNames);                
             end
 
 
@@ -178,7 +183,7 @@ classdef ai_recorder < sitools.si_linker
                 obj.hTask = dabs.ni.daqmx.Task(obj.taskName); 
 
                 % * Set up analog inputs
-                obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, obj.chanNames, obj.voltageRange*-1, obj.voltageRange,[],[],'DAQmx_Val_NRSE');
+                obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, [], obj.voltageRange*-1, obj.voltageRange,[],[],'DAQmx_Val_NRSE');
 
 
                 % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
@@ -302,6 +307,9 @@ classdef ai_recorder < sitools.si_linker
             % fname - Relative or absolute path to the .mat file we will
             %         save data to. Existing files of the same name will be
             %         over-written without warning.
+            %
+            % Example
+            % obj.saveCurrentSettings('myFileName')
 
             metaData.fname = obj.fname;
             metaData.dataType = obj.dataType;
@@ -409,10 +417,12 @@ classdef ai_recorder < sitools.si_linker
             for ii=1:length(obj.AI_channels)                
                 obj.subplots{ii} = subplot(n(1),n(2),ii);
                 obj.pltData{ii}  = plot(zeros(100,1));
+                obj.titles{ii} = title(''); %create the handle
                 grid on
             end
 
             obj.setPlotLimits;
+            obj.setPlotTitlesFromChanNames;
             obj.hFig.CloseRequestFcn = @obj.windowCloseFcn;
         end % openFigureWindow
 
@@ -612,9 +622,13 @@ classdef ai_recorder < sitools.si_linker
                 obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
             end
         end
+
         function setPlotTitlesFromChanNames(obj,~,~)
             for ii=1:length(obj.subplots)
-                if length(obj.yMin)
+                if length(obj.chanNames)>=ii && ~isempty(obj.chanNames{ii})
+                    obj.titles{ii}.String = obj.chanNames{ii};
+                else
+                    obj.titles{ii}.String = sprintf('AI %d', obj.AI_channels(ii));
                 end
             end
         end % setPlotTitlesFromChanNames

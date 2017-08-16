@@ -50,7 +50,7 @@ classdef monitor_blanker < sitools.si_linker
         scannerFrequency = 12E3 % We can read this from ScanImage too. 
 
         % The following will be used if we make a GUI
-        %hFig % The figure/GUI handle
+        hFig % The figure/GUI handle
         %figTagName = 'monitor_blanker' % Tag for the figure/GUI window
         %hAx % Figure axis handle
     end % Close hidden properties

@@ -1,5 +1,9 @@
 # ScanImageTools
-MATLAB tools for external scripting of ScanImage
+Useful ScanImage-related MATLAB tools.
 
-ScanImage can be scripted with [user functions](http://scanimage.vidriotechnologies.com/display/SI2016/User+Functions) and/or via the [API](http://scanimage.vidriotechnologies.com/display/API/Introduction+to+the+ScanImage+API). 
-This makes it possible to modify ScanImage without changing the source code. Presently, ScanImageTools contains a single example tool that plots the mean intensity of all open channel windows over time. 
+### Contents
+* `sitools.monitor_blanker` - Blank monitors during fast axis turn-around periods
+* `sitools.ai_recorder` - Acquire AI data during acquisition. Can start/stop in sync with ScanImage image acquisition. Automatically saves AI waveforms when images are saved during a Grab acquisition in ScanImage. 
+* UserFunctionInjector - apply user functions at the command line using the class `scanImageTool_base`. An example is provided.   
+
+

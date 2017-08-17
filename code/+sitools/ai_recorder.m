@@ -537,7 +537,7 @@ classdef ai_recorder < sitools.si_linker
                     if obj.hTask.isTaskDone
                         %Set up saving if needed
                         if obj.hSI.hChannels.loggingEnable
-                            thisFname = sprintf('AI_%s_%03d.bin', obj.hSI.hScan2D.logFileStem, obj.hSI.hScan2D.logFileCounter);
+                            thisFname = sprintf('%s_AI_%03d.bin', obj.hSI.hScan2D.logFileStem, obj.hSI.hScan2D.logFileCounter);
                             obj.fname = fullfile(obj.hSI.hScan2D.logFilePath,thisFname);
                             % File will automatically be opened when we start
                         end

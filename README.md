@@ -5,5 +5,4 @@ Useful ScanImage-related MATLAB tools.
 * `sitools.monitor_blanker` - Blank monitors during fast axis turn-around periods
 * `sitools.ai_recorder` - Acquire AI data during acquisition. Can start/stop in sync with ScanImage image acquisition. Automatically saves AI waveforms when images are saved during a Grab acquisition in ScanImage. 
 * UserFunctionInjector - apply user functions at the command line using the class `scanImageTool_base`. An example is provided.   
-
-
+* `appendDateAndTimeToFname` - User function that adds the current date and time to the start of the file name. Updates when Grab or loop is pressed.

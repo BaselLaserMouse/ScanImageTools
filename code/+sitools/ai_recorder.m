@@ -61,21 +61,28 @@ classdef ai_recorder < sitools.si_linker
     %  >> AI.start
     %
     %
-    % Problems?
+    % KNOWN ISSUES
+    %
+    % 1)
     % If you see "ERROR: A Task with name 'airecorder' already exists in
     % the DAQmx System" then check for existing instances of this class
     % and delete them (e.g. delete(myAIrec) ). If there are no instances
     % then there is an orphan task. You will either need to change the
     % "taskName" property to a different string or restart MATLAB. 
     %
+    % 2)
+    % Changing data acquisition properties on the fly is not currently 
+    % supported. You will need to change the settings, save the file,
+    % close the object and re-load the file. This will be fixed in 
+    % future. 
+    %
     %
     % Rob Campbell - Basel, 2017
     %
     % 
     % Also see:
-    % To read in data: readAIrecorderBinFile
-    %
-    % https://github.com/tenss/MatlabDAQmx
+    % To read in data use: readAIrecorderBinFile
+    % To learn more about DAQmx: https://github.com/tenss/MatlabDAQmx
 
     properties (SetAccess=protected, Hidden=false)
 
@@ -85,8 +92,8 @@ classdef ai_recorder < sitools.si_linker
 
     properties
         % Saving and data configuration
-        fname = ''      % File name for logging data to disk as binary using type ai_recoder.dataType
-        hFig % The figure/GUI handle
+        fname = ''  % File name for logging data to disk as binary using type ai_recoder.dataType
+        hFig        % The figure/GUI handle
 
         numPointsInPlot=5E3 % The plot will scroll with a maximum of this many points
 
@@ -95,10 +102,10 @@ classdef ai_recorder < sitools.si_linker
         %          the properties in the live object and use the saveCurrentSettings
         %          and loadCurrentSettingsMethods
 
-        devName = 'Dev1' % Name of the DAQ device to which we will connect
-        AI_channels = 0:3 % Analog input channels from which to acquire data. e.g. 0:3
-        voltageRange = 5  % Scalar defining the range over which data will be digitized
-        sampleRate = 1E3  % Analog input sample Rate in Hz
+        devName = 'Dev1'      % Name of the DAQ device to which we will connect
+        AI_channels = 0:3     % Analog input channels from which to acquire data. e.g. 0:3
+        voltageRange = 5      % Scalar defining the range over which data will be digitized
+        sampleRate = 1E3      % Analog input sample Rate in Hz
         sampleReadSize = 250  % Read off this many samples then plot and log to disk
     end 
 
@@ -117,8 +124,8 @@ classdef ai_recorder < sitools.si_linker
         figTagName = 'ai_recorder' % Tag for the figure/GUI window
         taskName = 'airecorder' % Name for the task
         subplots % Cell array of handles for the subplots (one per input channel)
-        pltData % Cell array of plot objects (one per subplot)
-        titles %plot titles
+        pltData  % Cell array of plot objects (one per subplot)
+        titles   %plot titles
         fid = -1  % File handle to which we will write data
         data      % We hold data to be plotted here        
     end % Close hidden properties
@@ -149,13 +156,17 @@ classdef ai_recorder < sitools.si_linker
 
             if linkToScanImage
                 obj.openFigureWindow % To display data as they come in
-                obj.connectToDAQ;
-                if obj.linkToScanImageAPI
-                    obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startStopAcqWithScanImage);
-                end
-                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
-                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
-                obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'chanNames', 'PostSet', @obj.setPlotTitlesFromChanNames);                
+                success = obj.connectToDAQ;
+                if success
+                    if obj.linkToScanImageAPI
+                        obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startStopAcqWithScanImage);
+                    end
+                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
+                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
+                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'chanNames', 'PostSet', @obj.setPlotTitlesFromChanNames);
+                else
+                    fprintf('\nNot connecting to ScanImage or DAQ --\n please check your DAQ settings and try again (see help text)\n\n')
+                end %if success
             end
 
 
@@ -176,35 +187,45 @@ classdef ai_recorder < sitools.si_linker
             % sampleReadSize - the number of samples to read before pulling
             %                  data off the DAQ for plotting or saving to disk
             if ~isempty(obj.hTask)
-                fprintf('Not connecting to NI DAQ device "%s". sitools.ai_recoder has already connected to the DAQ\n',...
+                fprintf('ERROR: Not connecting to NI DAQ device "%s". sitools.ai_recoder has already connected to the DAQ\n',...
                     obj.devName)
                 success=false;
                 return
             end
 
-            try
-                % Create a DAQmx task
-                obj.hTask = dabs.ni.daqmx.Task(obj.taskName); 
-
-                % * Set up analog inputs
-                obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, [], obj.voltageRange*-1, obj.voltageRange,[],[],'DAQmx_Val_NRSE');
-
-
-                % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
-                bufferSize_numSamplesPerChannel = 40*obj.sampleReadSize; % The number of samples to be stored in the buffer per channel. 
-                obj.hTask.cfgSampClkTiming(obj.sampleRate, 'DAQmx_Val_ContSamps', bufferSize_numSamplesPerChannel, 'OnboardClock');
-
-                % * Set up a callback function to regularly read the buffer and plot it or write to disk
-                obj.hTask.registerEveryNSamplesEvent(@obj.readData, obj.sampleReadSize, 1, 'Native');
-
-                fprintf('Connected to %s with %d AI channels\n', obj.devName, length(obj.AI_channels))            
-                success=true;
-            catch ME
-                % If the connection to the DAQ failed, display the error
-                obj.reportError(ME)
+            % Is the DAQ to which we are planning to connect present on the system?
+            thisSystem = dabs.ni.daqmx.System;
+            theseDevices = strsplit(thisSystem.devNames,', ');
+            if isempty( strmatch(obj.devName, theseDevices) )
+                fprintf('\nERROR: Device "%s" not present on system. Can not connect to DAQ. ',obj.devName)
+                fprintf('Available devices are:\n',obj.devName)
+                cellfun(@(x) fprintf(' * %s\n',x), theseDevices)
                 success=false;
+            else
+                try
+                    % Create a DAQmx task
+                    obj.hTask = dabs.ni.daqmx.Task(obj.taskName);
+
+                    % * Set up analog inputs
+                    obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, [], obj.voltageRange*-1, obj.voltageRange,[],[]) %May need to define connection type here (e.g. DAQmc_Val_NRSE)
+
+
+                    % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
+                    bufferSize_numSamplesPerChannel = 40*obj.sampleReadSize; % The number of samples to be stored in the buffer per channel. 
+                    obj.hTask.cfgSampClkTiming(obj.sampleRate, 'DAQmx_Val_ContSamps', bufferSize_numSamplesPerChannel, 'OnboardClock');
+
+                    % * Set up a callback function to regularly read the buffer and plot it or write to disk
+                    obj.hTask.registerEveryNSamplesEvent(@obj.readData, obj.sampleReadSize, 1, 'Native');
+
+                    fprintf('Connected to %s with %d AI channels\n', obj.devName, length(obj.AI_channels))
+                    success=true;
+                catch ME
+                    % If the connection to the DAQ failed, display the error
+                    obj.reportError(ME)
+                    success=false;
+                end
             end
-            
+
             if nargout>0
                 varargout{1}=success;
             end
@@ -248,10 +269,10 @@ classdef ai_recorder < sitools.si_linker
                 obj.reportError(ME)
                 success=false;
             end
-        
+
             if nargout>0
                 varargout{1}=success;
-            end            
+            end
         end % start
 
         function varargout=stop(obj)
@@ -403,7 +424,7 @@ classdef ai_recorder < sitools.si_linker
             if isempty(obj.hFig)
                 %If the figure does not exist, make it
                 obj.hFig = figure;
-                set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')                
+                set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')
             end
 
 

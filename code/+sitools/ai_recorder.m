@@ -207,7 +207,7 @@ classdef ai_recorder < sitools.si_linker
                     obj.hTask = dabs.ni.daqmx.Task(obj.taskName);
 
                     % * Set up analog inputs
-                    obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, [], obj.voltageRange*-1, obj.voltageRange,[],[]) %May need to define connection type here (e.g. DAQmc_Val_NRSE)
+                    obj.hTask.createAIVoltageChan(obj.devName, obj.AI_channels, [], obj.voltageRange*-1, obj.voltageRange,[],[],'DAQmx_Val_NRSE');
 
 
                     % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock

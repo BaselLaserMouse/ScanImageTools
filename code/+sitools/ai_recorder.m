@@ -597,7 +597,7 @@ classdef ai_recorder < sitools.si_linker
             %     3   5
             % for i=1:13; subplot(p(1),p(2),i), pcolor(rand(10)), end 
                  
-            while isprime(n) & n>4, 
+            while isprime(n) && n>4
                 n=n+1;
             end
 
@@ -641,8 +641,8 @@ classdef ai_recorder < sitools.si_linker
                 end
 
                 if length(obj.yMax)>=ii
-                    ymax = obj.yMax(ii);
-                else
+                    ymax = ob                else
+j.yMax(ii);
                     ymax = obj.voltageRange;
                 end
 

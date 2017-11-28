@@ -1,4 +1,4 @@
-function appendDateAndTimeToFname(src,evt,varargin)
+function appendDateAndTimeToFname(src,~,varargin)
     % ScanImage user function to append the current date and time to the file string
     %
     % function appendDateAndTimeToFname(src,evt,fileSavePath)
@@ -21,10 +21,13 @@ function appendDateAndTimeToFname(src,evt,varargin)
     % e) You can optioanlly save the above state as a Configuration file. 
     %
     %
-    % Inputs
-    % The third input arg (i.e. what's entered in the ScanImage Arguments box)
-    % should be a path to which all files will be saved. It must exist.
     %
+    % Inputs
+    %
+    % * The third input arg (i.e. what's entered in the ScanImage Arguments box)
+    %   should be a path to which all files will be saved. It must exist.
+    % * Create a sub-directory within the path defined above that the same
+    %   name as the save file name (optional, false by default)
     %
     %
     % Rob Campbell - Basel 2017
@@ -37,17 +40,25 @@ function appendDateAndTimeToFname(src,evt,varargin)
         return
     end
 
+    hSI = src.hSI;
+
     if nargin>2
         % Optionally set the file path
         filePath = varargin{1};
-        if ~exist('filePath','dir')
+        if ~exist(filePath,'dir')
             fprintf('Can not find directory %s. Will not set the save path\n', filePath)
         else
             hSI.hScan2D.logFilePath = filePath;
         end
     end
+    
+    
+    if nargin<3 || isempty(varargin{2})
+        createSubDir=false;
+    else
+        createSubDir=varargin{2};
+    end
 
-    hSI = src.hSI;
 
     currentFname = strsplit(hSI.hScan2D.logFileStem, '__');
 
@@ -57,7 +68,15 @@ function appendDateAndTimeToFname(src,evt,varargin)
 
     sampleName = currentFname{end}; % now we have a sample (mouse) name
 
-    % Build name with date and time
+    % Adil edit: make a folder with the same name and set that as logFilePath
     hSI.hScan2D.logFileStem = [datestr(now ,'yyyymmdd_HHMMSS__'), sampleName];
-
+    
+    if createSubDir
+        saveDir = fullfile(hSI.hScan2D.logFilePath, hSI.hScan2D.logFileStem);
+        if ~exist(saveDir,'dir')
+            mkdir(saveDir)
+        end
+        hSI.hScan2D.logFilePath = saveDir;
+    end %if createSubDir
+    
 end

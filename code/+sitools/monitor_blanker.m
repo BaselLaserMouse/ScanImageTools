@@ -30,10 +30,10 @@ classdef monitor_blanker < sitools.si_linker
         hTask % The DAQmx digital output task handle is stored here
 
         % Pulse timing (values in microseconds)
-        pulseDuration1 = 5
+        pulseDuration1 = 2
         pulseSpacing1 = 33
-        pulseDuration2 = 4
-        pulseSpacing2 = 37
+        pulseDuration2 = 2
+        pulseSpacing2 = 40
 
         % PMT blanking should come on at the same time
         PMTblankLatency1 = 8 % This will blank the PMTs x us from the onset of the first pulse

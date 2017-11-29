@@ -554,7 +554,7 @@ classdef ai_recorder < sitools.si_linker
             end
 
             switch obj.hSI.acqState
-                case 'grab'
+                case {'grab','loop'}
                     if obj.hTask.isTaskDone
                         %Set up saving if needed
                         if obj.hSI.hChannels.loggingEnable

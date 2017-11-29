@@ -641,8 +641,8 @@ classdef ai_recorder < sitools.si_linker
                 end
 
                 if length(obj.yMax)>=ii
-                    ymax = ob                else
-j.yMax(ii);
+                    ymax = obj.yMax(ii);
+                else
                     ymax = obj.voltageRange;
                 end
 

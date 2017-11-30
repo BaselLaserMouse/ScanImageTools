@@ -27,6 +27,7 @@ function saveCurrentSettings(obj,fname)
     metaData.voltageRange = obj.voltageRange;
     metaData.sampleRate = obj.sampleRate;
     metaData.chanNames = obj.chanNames;
+    metaData.overlayTraces = obj.overlayTraces;
     metaData.numPointsInPlot = obj.numPointsInPlot;
     metaData.yMax = obj.yMax;
     metaData.yMin = obj.yMin;

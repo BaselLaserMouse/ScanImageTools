@@ -40,7 +40,7 @@ function loadSettings(obj,fname)
     end
 
 
-    fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax','yMin','devName', 'numPointsInPlot'};
+    fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax','yMin','devName', 'numPointsInPlot','overlayTraces'};
     n=0;
 
     for ii=1:length(fieldsToApply)
@@ -55,5 +55,6 @@ function loadSettings(obj,fname)
     if n==length(fieldsToApply)
         fprintf('All settings updated\n')
     end
+
 
 end % loadSettings

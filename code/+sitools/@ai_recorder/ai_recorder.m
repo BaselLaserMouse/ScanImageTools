@@ -193,7 +193,7 @@ classdef ai_recorder < sitools.si_linker
             % sampleReadSize - the number of samples to read before pulling
             %                  data off the DAQ for plotting or saving to disk
 
-            if ~exist('dabs.ni.daqmx.System','Class')
+            if ~exist('dabs.ni.daqmx.System','class')
                 success=false;
                 fprintf('No Vidrio DAQmx wrapper found.\n')
                 if nargout>0
@@ -506,21 +506,27 @@ classdef ai_recorder < sitools.si_linker
         function setPlotLimits(obj,~,~)
             % This listener callback runs whenever the user changes a desired plot limit.
             % The axes are changed for this plot.
-            for ii=1:length(obj.subplots)
+            if obj.overlayTraces
+                Y=[min(obj.yMin), max(obj.yMax)];
+                obj.subplots{1}.YLim = (Y/obj.voltageRange) * 2^15;
+            else
+                    
+                for ii=1:length(obj.subplots)
 
-                if length(obj.yMin)>=ii %check a value exists for this axis
-                    ymin = obj.yMin(ii);
-                else
-                    ymin = -obj.voltageRange;
+                    if length(obj.yMin)>=ii %check a value exists for this axis
+                        ymin = obj.yMin(ii);
+                    else
+                        ymin = -obj.voltageRange;
+                    end
+
+                    if length(obj.yMax)>=ii
+                        ymax = obj.yMax(ii);
+                    else
+                        ymax = obj.voltageRange;
+                    end
+
+                    obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
                 end
-
-                if length(obj.yMax)>=ii
-                    ymax = obj.yMax(ii);
-                else
-                    ymax = obj.voltageRange;
-                end
-
-                obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
             end
         end % setPlotLimits
 

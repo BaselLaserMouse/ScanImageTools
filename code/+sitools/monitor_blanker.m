@@ -30,12 +30,15 @@ classdef monitor_blanker < sitools.si_linker
         hTask % The DAQmx digital output task handle is stored here
 
         % Pulse timing (values in microseconds)
-        pulseDuration1 = 5
-        pulseSpacing1 = 29
-        pulseDuration2 = 10
-        pulseSpacing2 = 33
+        pulseDuration1 = 2
+        pulseSpacing1 = 33
+        pulseDuration2 = 2
+        pulseSpacing2 = 40
 
-        PMTblankLatency = 1 % This will blank the PMTs 1 us before the monitor goes on and re-enable them 1 us after it switches off
+        % PMT blanking should come on at the same time
+        PMTblankLatency1 = 8 % This will blank the PMTs x us from the onset of the first pulse
+        PMTblankLatency2 = 4 % This will blank the PMTs x us from the onset of the second pulse
+
         waveform %The waveform we will play out of the DO
 
     end % Close properties
@@ -196,29 +199,17 @@ classdef monitor_blanker < sitools.si_linker
             obj.start;
         end
 
-        function buildWaveform(obj,pulseDuration,offset)
+        function buildWaveform(obj)
             % Build a single waveform to be played out at a sample rate defined by obj.sampelRate
-            maxPoints = round((1/obj.scannerFrequency)*1E6);
-
-            if nargin>1
-                targetWaveLength = round(maxPoints)-1;
-                obj.pulseDuration1 = offset;
-                obj.pulseDuration2 = pulseDuration;
-                space = ceil((targetWaveLength - pulseDuration*2)/2);
-                obj.pulseSpacing1 = space;
-                obj.pulseSpacing2 = space;
-                fprintf('Scanner frequency: %0.2f. Using a pulse spacing of %d ms\n', obj.scannerFrequency, space);
-            end
-
-
+            maxPoints = round((1/obj.scannerFrequency)*1E6); %TODO: read frequency from ScanImage
 
             %Build the blanking waveform
             blankWaveform = [...
-                repmat(1,obj.pulseDuration1,1); ...
                 repmat(0,obj.pulseSpacing1,1); ...
-                repmat(1,obj.pulseDuration2,1); ...
+                repmat(1,obj.pulseDuration1,1); ...
                 repmat(0,obj.pulseSpacing2,1); ...
-                1]; % Then stay high
+                repmat(1,obj.pulseDuration2,1); ...
+                0]; % Then stay low
 
             if length(blankWaveform)>maxPoints
                 fprintf('WAVEFORM IS LONGER THAN SCAN PERIOD! TRUNCATING TO %d \n', maxPoints)
@@ -228,11 +219,12 @@ classdef monitor_blanker < sitools.si_linker
             end
 
             PMTwaveform = [...
-                repmat(1,obj.pulseDuration1+obj.PMTblankLatency,1); ...
-                repmat(0,obj.pulseSpacing1-obj.PMTblankLatency*2,1); ...
-                repmat(1,obj.pulseDuration2+obj.PMTblankLatency*2,1); ...
-                repmat(0,obj.pulseSpacing2-obj.PMTblankLatency*2,1); ...
-                1;repmat(1,obj.PMTblankLatency,1)]; 
+                repmat(1,obj.PMTblankLatency2,1); ...
+                repmat(0,obj.pulseSpacing1-obj.PMTblankLatency2,1); ...
+                repmat(1,obj.pulseDuration1+obj.PMTblankLatency1,1); ...
+                repmat(0,obj.pulseSpacing2-obj.PMTblankLatency1,1); ...
+                repmat(1,obj.pulseDuration2,1); ...
+                1]; 
 
             if length(PMTwaveform) ~= length(blankWaveform)
                 fprintf('PMT length=%d but blank length=%d. Setting PMT identical to blank.\n',...
@@ -314,8 +306,13 @@ classdef monitor_blanker < sitools.si_linker
             obj.regnerateWaveforms
         end
 
-        function set.PMTblankLatency(obj,value)
-            obj.PMTblankLatency=value;
+        function set.PMTblankLatency1(obj,value)
+            obj.PMTblankLatency1=value;
+            obj.regnerateWaveforms;
+        end
+
+        function set.PMTblankLatency2(obj,value)
+            obj.PMTblankLatency2=value;
             obj.regnerateWaveforms;
         end
 

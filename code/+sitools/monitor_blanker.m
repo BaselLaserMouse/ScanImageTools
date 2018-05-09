@@ -125,8 +125,8 @@ classdef monitor_blanker < sitools.si_linker
 
 
                 % Set up the sample clock at obj.sampleRate 
-                obj.hTask.cfgSampClkTiming(obj.sampleRate,'DAQmx_Val_FiniteSamps',size(obj.waveform,1)*2); %,sampleClockSource);
-                obj.hTask.cfgOutputBuffer(size(obj.waveform,1)*2);
+                obj.hTask.cfgSampClkTiming(obj.sampleRate,'DAQmx_Val_FiniteSamps',size(obj.waveform,1)); %,sampleClockSource);
+                obj.hTask.cfgOutputBuffer(size(obj.waveform,1));
 
 
                 % * Define the channel on which we listen for triggers and set task as retriggerable                

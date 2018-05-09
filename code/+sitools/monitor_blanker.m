@@ -213,7 +213,7 @@ classdef monitor_blanker < sitools.si_linker
 
             if length(blankWaveform)>maxPoints
                 fprintf('WAVEFORM IS LONGER THAN SCAN PERIOD! TRUNCATING TO %d \n', maxPoints)
-                blankingWaveform= blankWaveform(1:maxPoints);
+                blankWaveform = blankWaveform(1:maxPoints);
             else
                 fprintf('New waveform is of length %d\n', length(blankWaveform))
             end

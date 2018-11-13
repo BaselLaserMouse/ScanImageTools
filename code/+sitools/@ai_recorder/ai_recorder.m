@@ -117,6 +117,8 @@ classdef ai_recorder < sitools.si_linker
              % repmat(-obj.voltageRange,1,length(obj.AI_channels))
         chanNames = {}; % Cell array describing the channes. e.g. {'valve', 'trigger', 'frame_clock'}. 
                         % Auto-generated if left blank
+        overlayTraces = false % If true, data are overlaid onto a single plot in different colours in stead of 
+                             % being placed in different plots
     end
 
 
@@ -130,7 +132,9 @@ classdef ai_recorder < sitools.si_linker
         data      % We hold data to be plotted here        
     end % Close hidden properties
 
-    
+
+
+
     methods
 
         function obj = ai_recorder(linkToScanImage)
@@ -161,14 +165,16 @@ classdef ai_recorder < sitools.si_linker
                     if obj.linkToScanImageAPI
                         obj.listeners{length(obj.listeners)+1} = addlistener(obj.hSI,'acqState', 'PostSet', @obj.startStopAcqWithScanImage);
                     end
-                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
-                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
-                    obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'chanNames', 'PostSet', @obj.setPlotTitlesFromChanNames);
+
                 else
                     fprintf('\nNot connecting to ScanImage or DAQ --\n please check your DAQ settings and try again (see help text)\n\n')
                 end %if success
             end
 
+            obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMax', 'PostSet', @obj.setPlotLimits);
+            obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'yMin', 'PostSet', @obj.setPlotLimits);
+            obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'chanNames', 'PostSet', @obj.setPlotTitlesFromChanNames);
+            obj.listeners{length(obj.listeners)+1} = addlistener(obj, 'overlayTraces', 'PostSet', @obj.createPlotAxes);
 
         end %constructor
 
@@ -186,10 +192,22 @@ classdef ai_recorder < sitools.si_linker
             % sampleRate - number of samples per second to acquire
             % sampleReadSize - the number of samples to read before pulling
             %                  data off the DAQ for plotting or saving to disk
+
+            if ~exist('dabs.ni.daqmx.System','class')
+                success=false;
+                fprintf('No Vidrio DAQmx wrapper found.\n')
+                if nargout>0
+                    varargout{1}=success;
+                end
+                return
+            end
             if ~isempty(obj.hTask)
                 fprintf('ERROR: Not connecting to NI DAQ device "%s". sitools.ai_recoder has already connected to the DAQ\n',...
                     obj.devName)
-                success=false;
+                sucdcess=false;
+                if nargout>0
+                    varargout{1}=success;
+                end
                 return
             end
 
@@ -275,6 +293,7 @@ classdef ai_recorder < sitools.si_linker
             end
         end % start
 
+
         function varargout=stop(obj)
             % ai_recorder.stop - stop the acquisition and close any open data logging files
             %
@@ -304,6 +323,7 @@ classdef ai_recorder < sitools.si_linker
             end
         end
 
+
         function connectAndStart(obj)
             % ai_recorder.connectAndStart - connect to the DAQ and start
             %
@@ -314,151 +334,20 @@ classdef ai_recorder < sitools.si_linker
             obj.start
         end
 
-        function saveCurrentSettings(obj,fname)
-            % ai_recorder.saveCurrentSettings(fname) - save settings file
-            %
-            % Purpose
-            % Writes the current DAQ settings to a MATLAB structure.
-            % This method is used to create the "meta" file saved
-            % along with the .bin file. It's also used to save settings
-            % so that they can be re-applied later using the method
-            % ai_recorder.loadSettings
-            %
-            % The created file will contains the fields: fname, dataType,
-            % channels, voltageRange, sampleRate, chanNames.
-            %
-            %
-            % Inputs
-            % fname - Relative or absolute path to the .mat file we will
-            %         save data to. Existing files of the same name will be
-            %         over-written without warning.
-            %
-            % Example
-            % obj.saveCurrentSettings('myFileName')
 
-            metaData.devName = obj.devName;
-            metaData.fname = obj.fname;
-            metaData.dataType = obj.dataType;
-            metaData.AI_channels = obj.AI_channels;
-            metaData.voltageRange = obj.voltageRange;
-            metaData.sampleRate = obj.sampleRate;
-            metaData.chanNames = obj.chanNames;
-            metaData.numPointsInPlot = obj.numPointsInPlot;
-            metaData.yMax = obj.yMax;
-            metaData.yMin = obj.yMin;
-
-            save(fname,'metaData')
-
-        end % saveCurrentSettings
-
-        function loadSettings(obj,fname)
-            % ai_recorder.loadSettings(fname) - load settings file
-            %
-            % Purpose
-            % Load DAQ settings and replace existing property values
-            % with those from the loaded structur. This is used to save
-            % values as a preference file so they can be quickly
-            % re-applied. Use ai_recoder.saveCurrentSettings to create the
-            % file. 
-            %
-            % The following fields will be replaced: dataType,
-            % AI_channels, voltageRange, sampleRate, chanNames.
-            %
-            %
-            % Inputs
-            % fname - Relative or absolute path to the .mat file we will
-            %         load data from. The file should contain a structure
-            %         called "metaData" with the fields listed above.
-            %         "fname" may also be a valid structure
-            % 
-            % Examples:
-            % >> AI.loadSettings('hello_meta.mat')
-            %   All settings updated
-            % >> load('hello_meta.mat')
-            % >> AI.loadSettings(metaData)
-            %   All settings updated
-            %
-
-            if ischar(fname)
-                load(fname)
-                if ~exist('metaData','var')
-                    fprintf('No variable "metaData" found in file %s\n', fname)
-                    return
-                end
-            elseif isstruct(fname)
-                metaData = fname;
-            else
-                fprintf('ai_recorder.loadSettings - Input variable should be a string or a struct\n')
-                return
-            end
-
-
-            fieldsToApply = {'dataType', 'AI_channels', 'voltageRange', 'sampleRate', 'chanNames','yMax','yMin','devName', 'numPointsInPlot'};
-            n=0;
-
-            for ii=1:length(fieldsToApply)
-                if ~isfield(metaData,fieldsToApply{ii})
-                    fprintf('No field "%s" found in loaded structure. Skipping!\n', fieldsToApply{ii})
-                    continue
-                end
-                obj.(fieldsToApply{ii}) = metaData.(fieldsToApply{ii});
-                n=n+1;
-            end
-
-            if n==length(fieldsToApply)
-                fprintf('All settings updated\n')
-            end
-
-        end % loadSettings
-
-        function openFigureWindow(obj)
-            % ai_recorder.openFigureWindow - open figure window for data display.
-            %
-            % Purpose
-            % Open a figure window and configure it so that the recorder is
-            % shutdown and acquisition stopped when the window is closed.
-            % The figure window is only opened if doesn't already exist.
-            % The y-axis limits are read from the two properties (yMin and yMax)
-            % and applied. They can also be applied on the fly.
-            obj.hFig = findobj(0, 'Tag', obj.figTagName);
-            if isempty(obj.hFig)
-                %If the figure does not exist, make it
-                obj.hFig = figure;
-                set(obj.hFig, 'Tag', obj.figTagName, 'Name', 'ScanImage AI Recorder')
-            end
-
-
-            %Focus on the figure and clear it
-            figure(obj.hFig)
-            clf
-
-            %Make the subplots
-            if isempty(obj.yMax)
-                obj.yMax = repmat(obj.voltageRange,1,length(obj.AI_channels));
-            end
-            if isempty(obj.yMin)
-                obj.yMin = repmat(-obj.voltageRange,1,length(obj.AI_channels));
-            end
-
-            n=obj.numSubPlots(length(obj.AI_channels));
-            for ii=1:length(obj.AI_channels)                
-                obj.subplots{ii} = subplot(n(1),n(2),ii);
-                obj.pltData{ii}  = plot(zeros(100,1));
-                obj.titles{ii} = title(''); %create the handle
-                grid on
-            end
-
-            obj.setPlotLimits;
-            obj.setPlotTitlesFromChanNames;
-            obj.hFig.CloseRequestFcn = @obj.windowCloseFcn;
-        end % openFigureWindow
-
+        % Declare external methods
+        openFigureWindow(obj)
+        loadSettings(obj,fname)
+        saveCurrentSettings(obj,fname)
     end % Close methods
 
 
 
 
     methods (Hidden)
+        % Declare external hidden methods
+        [p,n]=numSubPlots(~,n);
+
 
         function delete(obj)
             fprintf('sitools.ai_recorder is shutting down\n')
@@ -519,7 +408,7 @@ classdef ai_recorder < sitools.si_linker
                 else
 
                     for ii=1:size(obj.data,2)
-                        if ~isempty(obj.subplots{ii}) && isvalid(obj.subplots{ii})
+                        if ~isempty(obj.pltData{ii}) && isvalid(obj.pltData{ii})
                             obj.pltData{ii}.YData=obj.data(:,ii); % Plot into the figure axes if they exist
                         end
                     end
@@ -573,94 +462,93 @@ classdef ai_recorder < sitools.si_linker
         end % startStopAcqWithScanImage
 
 
-        function [p,n]=numSubPlots(~,n)
-            % function [p,n]=numSubPlots(n)
-            %
-            % Purpose
-            % Calculate how many rows and columns of sub-plots are needed to
-            % neatly display n subplots. 
-            %
-            % Inputs
-            % n - the desired number of subplots.     
-            %  
-            % Outputs
-            % p - a vector length 2 defining the number of rows and number of
-            %     columns required to show n plots.     
-            % [ n - the current number of subplots. This output is used only by
-            %       this function for a recursive call.]
-            %
-            %
-            %
-            % Example: neatly lay out 13 sub-plots
-            % >> p=numSubPlots(13)
-            % p = 
-            %     3   5
-            % for i=1:13; subplot(p(1),p(2),i), pcolor(rand(10)), end 
-                 
-            while isprime(n) && n>4
-                n=n+1;
+        function createPlotAxes(obj,~,~)
+            % Create axes into which we will plot the incoming AI traces.
+            % Make either one plot per trace or places all traces on the same plot
+
+            if isempty(obj.yMax)
+                obj.yMax = repmat(obj.voltageRange,1,length(obj.AI_channels));
+            end
+            if isempty(obj.yMin)
+                obj.yMin = repmat(-obj.voltageRange,1,length(obj.AI_channels));
             end
 
-            p=factor(n);
+            clf
 
-            if length(p)==1
-                p=[1,p];
-                return
+            if obj.overlayTraces==false
+
+                n=obj.numSubPlots(length(obj.AI_channels));
+                for ii=1:length(obj.AI_channels)
+                    obj.subplots{ii} = subplot(n(1),n(2),ii);
+                    obj.pltData{ii}  = plot(zeros(100,1));
+                    obj.titles{ii} = title(''); %create the handle
+                    grid on
+                end
+
+            else
+
+                obj.subplots{1} = cla;
+                obj.subplots{1}.NextPlot='Add';
+                obj.titles{1} = title(''); %create the handle, even though we are unlikely
+                obj.subplots(2:end)=[];
+                for ii=1:length(obj.AI_channels)
+                    obj.pltData{ii}  = plot(zeros(100,1));
+                    grid on
+                end
+
             end
 
-            while length(p)>2
-                if length(p)>=4
-                    p(1)=p(1)*p(end-1);
-                    p(2)=p(2)*p(end);
-                    p(end-1:end)=[];
-                else
-                    p(1)=p(1)*p(2);
-                    p(2)=[];
-                end    
-                p=sort(p);
-            end
+            obj.setPlotLimits;
+            obj.setPlotTitlesFromChanNames;
+        end % createPlotAxes
 
-
-            %Reformat if the column/row ratio is too large: we want a roughly
-            %square design 
-            while p(2)/p(1)>2.5
-                N=n+1;
-                [p,n]=obj.numSubPlots(N); %Recursive!
-            end
-
-        end %numSubPlots
 
         function setPlotLimits(obj,~,~)
             % This listener callback runs whenever the user changes a desired plot limit.
-            for ii=1:length(obj.subplots)
+            % The axes are changed for this plot.
+            if obj.overlayTraces
+                Y=[min(obj.yMin), max(obj.yMax)];
+                obj.subplots{1}.YLim = (Y/obj.voltageRange) * 2^15;
+            else
+                    
+                for ii=1:length(obj.subplots)
 
-                if length(obj.yMin)>=ii %check a value exists for this axis
-                    ymin = obj.yMin(ii);
-                else
-                    ymin = -obj.voltageRange;
+                    if length(obj.yMin)>=ii %check a value exists for this axis
+                        ymin = obj.yMin(ii);
+                    else
+                        ymin = -obj.voltageRange;
+                    end
+
+                    if length(obj.yMax)>=ii
+                        ymax = obj.yMax(ii);
+                    else
+                        ymax = obj.voltageRange;
+                    end
+
+                    obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
                 end
-
-                if length(obj.yMax)>=ii
-                    ymax = obj.yMax(ii);
-                else
-                    ymax = obj.voltageRange;
-                end
-
-                obj.subplots{ii}.YLim = ([ymin, ymax]/obj.voltageRange) * 2^15;
             end
-        end
+        end % setPlotLimits
+
 
         function setPlotTitlesFromChanNames(obj,~,~)
-            for ii=1:length(obj.subplots)
-                if length(obj.chanNames)>=ii && ~isempty(obj.chanNames{ii})
-                    obj.titles{ii}.String = sprintf('AI%d %s', obj.AI_channels(ii), obj.chanNames{ii});
-                else
-                    obj.titles{ii}.String = sprintf('AI %d', obj.AI_channels(ii));
+
+            if obj.overlayTraces
+                %Skip titles if there is just one plot
+            else
+                for ii=1:length(obj.subplots)
+                    if length(obj.chanNames)>=ii && ~isempty(obj.chanNames{ii})
+                        obj.titles{ii}.String = sprintf('AI%d %s', obj.AI_channels(ii), obj.chanNames{ii});
+                    else
+                        obj.titles{ii}.String = sprintf('AI %d', obj.AI_channels(ii));
+                    end
                 end
-            end
+            end % if obj.overlayTraces
         end % setPlotTitlesFromChanNames
+
     end % Close hidden methods  
     
+
     
     % getters and setters
     methods

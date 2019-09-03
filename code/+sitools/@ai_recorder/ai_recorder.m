@@ -61,6 +61,8 @@ classdef ai_recorder < sitools.si_linker
     %  d. Save data to disk
     %  >> AI.fname='test.bin';
     %  >> AI.start
+    %  % This creates a data file (the .bin) and also a .mat file that allows the .bin to be read back. 
+    %  % Do not delete the .mat file. Read back data with 
     %
     %
     % KNOWN ISSUES

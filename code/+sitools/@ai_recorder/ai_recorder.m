@@ -102,11 +102,11 @@ classdef ai_recorder < sitools.si_linker
         %          the properties in the live object and use the saveCurrentSettings
         %          and loadCurrentSettingsMethods
 
-        devName = 'Dev1'      % Name of the DAQ device to which we will connect
-        AI_channels = 0:3     % Analog input channels from which to acquire data. e.g. 0:3
+        devName = 'sDev0'      % Name of the DAQ device to which we will connect
+        AI_channels = 10:12     % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5      % Scalar defining the range over which data will be digitized
-        sampleRate = 1E3      % Analog input sample Rate in Hz
-        sampleReadSize = 250  % Read off this many samples then plot and log to disk
+        sampleRate = 4E3      % Analog input sample Rate in Hz
+        sampleReadSize = 1000  % Read off this many samples then plot and log to disk
     end 
 
     properties (SetObservable)
@@ -183,16 +183,87 @@ classdef ai_recorder < sitools.si_linker
             % ai_recorder.connectToDAQ - Connect to the DAQ using the object properties
             %
             % Purpose
-            % Run this method to connect to an NI DAQ device for analog
+            % Run this method to connect to an DAQ device for analog
             % input using the parameters described in the properties of
             % this class. i.e.
-            % devName - the name of the NI device
+            % devName - the name of the device
             % AI_channels - vector channel numbers
             % voltageRange - scalar defining the digitization range
             % sampleRate - number of samples per second to acquire
             % sampleReadSize - the number of samples to read before pulling
             %                  data off the DAQ for plotting or saving to disk
+            
+            if startsWith(obj.devName, 'v')
+                % it is a vDAQ
+                varagout=connectToVidrioDevice(obj);
+            else
+                % it is an NI device
+                varagout=connectToNiDevice(obj);
+            end
+            return
+        end
+            
+        function varagout=connectToVidrioDevice(obj)
+            % ai_recorder.connectToNiDevice - Connect to the DAQ using the object properties
+            %
+            % This function is called by connectToDAQ for devName that do
+            % start with "v"
+            hResourceStore = dabs.resources.ResourceStore();
+            hvDAQ = hResourceStore.filterByName(obj.devName);
+            if isempty(hvDAQ)
+                fprintf('ERROR: Not connecting to vDAQ device "%s". The device could not be found in dabsresources\n',...
+                    obj.devName)
+                sucdcess=false;
+                if nargout>0
+                    varargout{1}=success;
+                end
+                return
+            end
+            hFpga = hvDAQ.hDevice;
+            
+            if obj.voltageRange ~= 10
+                fprintf('Warning! Cannot change the voltage range of vDAQ. Using 10V./n')
+            end
+            
+            try
+                % Create a vDAQ task
+                obj.hTask = dabs.vidrio.ddi.AiTask(hFpga, 'ai_record Task');
+                
+                % * Set up analog inputs
+                for i = 1:numel(obj.AI_channels)
+                    obj.hTask.addChannel(obj.AI_channels(i));
+                end
+                
+                % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
+                obj.hTask.sampleRate = obj.sampleRate;
+                if obj.sampleRate < 3000
+                    fprintf('Warning! vDAQ seems weird with sampling rate below 3kHz./n')
+                end
+                    
+                bufferSize_numSamplesPerChannel = 40*obj.sampleReadSize;
+                obj.hTask.bufferSize = bufferSize_numSamplesPerChannel;
 
+                % * Set up a callback function to regularly read the buffer and plot it or write to disk
+                obj.hTask.sampleCallbackN = obj.sampleReadSize;
+                obj.hTask.sampleCallbackAutoRead = 1;
+                obj.hTask.sampleCallback = @obj.readData;
+
+                fprintf('Connected to %s with %d AI channels\n', obj.devName, length(obj.AI_channels))
+                success=true;
+            catch ME
+                    % If the connection to the DAQ failed, display the error
+                    obj.reportError(ME)
+                    success=false;
+            end
+        end
+
+            
+        function varagout=connectToNiDevice(obj)
+            % ai_recorder.connectToNiDevice - Connect to the DAQ using the object properties
+            %
+            % This function is called by connectToDAQ for devName that do
+            % not start with "v"
+            
             if ~exist('dabs.ni.daqmx.System','class')
                 success=false;
                 fprintf('No Vidrio DAQmx wrapper found.\n')

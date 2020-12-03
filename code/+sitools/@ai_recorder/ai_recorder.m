@@ -101,12 +101,14 @@ classdef ai_recorder < sitools.si_linker
         % CAUTION: Do not edit these values here for your experiment. Change 
         %          the properties in the live object and use the saveCurrentSettings
         %          and loadCurrentSettingsMethods
-
-        devName = 'sDev0'      % Name of the DAQ device to which we will connect
-        AI_channels = 10:12     % Analog input channels from which to acquire data. e.g. 0:3
+        
+        devType = 'vDAQ';       % device type, can be "vDAQ" or "DAQmx"
+        devName = 'Dev1'      % Name of the DAQ device to which we will connect
+        AI_channels = 0:3     % Analog input channels from which to acquire data. e.g. 0:3
         voltageRange = 5      % Scalar defining the range over which data will be digitized
-        sampleRate = 4E3      % Analog input sample Rate in Hz
-        sampleReadSize = 1000  % Read off this many samples then plot and log to disk
+        sampleRate = 1E3      % Analog input sample Rate in Hz
+        sampleReadSize = 250  % Read off this many samples then plot and log to disk
+        
     end 
 
     properties (SetObservable)
@@ -193,17 +195,19 @@ classdef ai_recorder < sitools.si_linker
             % sampleReadSize - the number of samples to read before pulling
             %                  data off the DAQ for plotting or saving to disk
             
-            if startsWith(obj.devName, 'v')
-                % it is a vDAQ
-                varagout=connectToVidrioDevice(obj);
-            else
-                % it is an NI device
-                varagout=connectToNiDevice(obj);
+            switch lower(obj.devType)
+                case 'vdaq'
+                    varargout{1}=connectToVidrioDevice(obj);
+                case 'daqmx'
+                    % it is an NI device
+                    varargout{1}=connectToNiDevice(obj);
+                otherwise
+                    error('devType must be vDAQ or DAQmx')
             end
             return
         end
             
-        function varagout=connectToVidrioDevice(obj)
+        function varargout=connectToVidrioDevice(obj)
             % ai_recorder.connectToNiDevice - Connect to the DAQ using the object properties
             %
             % This function is called by connectToDAQ for devName that do
@@ -213,7 +217,7 @@ classdef ai_recorder < sitools.si_linker
             if isempty(hvDAQ)
                 fprintf('ERROR: Not connecting to vDAQ device "%s". The device could not be found in dabsresources\n',...
                     obj.devName)
-                sucdcess=false;
+                success=false;
                 if nargout>0
                     varargout{1}=success;
                 end
@@ -222,7 +226,8 @@ classdef ai_recorder < sitools.si_linker
             hFpga = hvDAQ.hDevice;
             
             if obj.voltageRange ~= 10
-                fprintf('Warning! Cannot change the voltage range of vDAQ. Using 10V./n')
+                fprintf('Warning! Cannot change the voltage range of vDAQ. Using 10V.\n')
+                obj.voltageRange = 10;
             end
             
             try
@@ -255,10 +260,14 @@ classdef ai_recorder < sitools.si_linker
                     obj.reportError(ME)
                     success=false;
             end
+            if nargout>0
+                varargout{1}=success;
+            end
+            disp('done')
         end
 
             
-        function varagout=connectToNiDevice(obj)
+        function varargout=connectToNiDevice(obj)
             % ai_recorder.connectToNiDevice - Connect to the DAQ using the object properties
             %
             % This function is called by connectToDAQ for devName that do
@@ -275,7 +284,7 @@ classdef ai_recorder < sitools.si_linker
             if ~isempty(obj.hTask)
                 fprintf('ERROR: Not connecting to NI DAQ device "%s". sitools.ai_recoder has already connected to the DAQ\n',...
                     obj.devName)
-                sucdcess=false;
+                success=false;
                 if nargout>0
                     varargout{1}=success;
                 end
@@ -515,7 +524,16 @@ classdef ai_recorder < sitools.si_linker
 
             switch obj.hSI.acqState
                 case {'grab','loop'}
-                    if obj.hTask.isTaskDone
+                    switch lower(obj.devType)
+                        case 'vdaq'
+                            done = obj.hTask.done;
+                        case 'daqmx'
+                            % it is an NI device
+                            done = obj.hTask.isTaskDone;
+                        otherwise
+                            error('devType must be vDAQ or DAQmx')
+                    end
+                    if done
                         %Set up saving if needed
                         if obj.hSI.hChannels.loggingEnable
                             thisFname = sprintf('%s_AI_%03d.bin', obj.hSI.hScan2D.logFileStem, obj.hSI.hScan2D.logFileCounter);

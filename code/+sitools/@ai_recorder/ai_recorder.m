@@ -2,13 +2,13 @@ classdef ai_recorder < sitools.si_linker
     % sitools.ai_recorder - acquire data from analog input channels and sync some operations with ScanImage
     %
     % Purpose
-    % Connect to a defined set of analog input channels on a defined NI
-    % DAQ and acquire data at at a defined sample rate. Data are streamed
-    % to a plot window. If ScanImage is started, data acquisition can be
-    % configured to start when "Focus" or "Grab" are pressed. In addition,
-    % if data are being saved in Grab mode a binary log file containing
-    % the acquired data is automatically saved in the same directory with
-    % a similar file name to the ScanImage TIFF. 
+    % Connect to a defined set of analog input channels on a defined DAQ 
+    % (either NI or vDAQ) and acquire data at at a defined sample rate.
+    % Data are streamed to a plot window. If ScanImage is started, data 
+    % acquisition can be configured to start when "Focus" or "Grab" are 
+    % pressed. In addition, if data are being saved in Grab mode a binary 
+    % log file containing the acquired data is automatically saved in the 
+    % same directory with a similar file name to the ScanImage TIFF. 
     %
     % Getting Help
     % Try "doc sitools.ai_recorder" and also look at the help text for the
@@ -32,6 +32,7 @@ classdef ai_recorder < sitools.si_linker
     %
     % * Create, save, then load a set of acquisition preferences
     % >> AI=sitools.ai_recorder(false);
+    % >> AI.devType = 'DAQmx';  % set the DAQ type, either DAQmx or vDAQ
     % >> AI.chanNames={'frame_trigger','valve'};
     % >> AI.AI_channels=[0,1];
     % >> AI.saveCurrentSettings('prefsAIrec.mat');
@@ -46,6 +47,7 @@ classdef ai_recorder < sitools.si_linker
     %  >> AI = sitools.ai_recorder(false) %false so it does not attach to ScanImage
     %
     %  b. Set any desired properties then start
+    %  >> AI.devType = 'DAQmx';  % set the DAQ type, either DAQmx or vDAQ
     %  >> AI.devName = 'auxDevice';
     %  >> AI.AI_channels=0:1; % acquire data on first two channels
     %  >> AI.voltageRange=1  % over +/- 1 volt
@@ -76,6 +78,9 @@ classdef ai_recorder < sitools.si_linker
     % close the object and re-load the file. This will be fixed in 
     % future. 
     %
+    % 3)
+    % When using vDAQ, the data range is fixed to 10 V and the sampling
+    % rate must be above 3kHz.
     %
     % Rob Campbell - Basel, 2017
     %
@@ -242,7 +247,7 @@ classdef ai_recorder < sitools.si_linker
                 % * Configure the sampling rate and the size of the buffer in samples using the on-board sanple clock
                 obj.hTask.sampleRate = obj.sampleRate;
                 if obj.sampleRate < 3000
-                    fprintf('Warning! vDAQ seems weird with sampling rate below 3kHz./n')
+                    fprintf('Warning! vDAQ seems weird with sampling rate below 3kHz.\n')
                 end
                     
                 bufferSize_numSamplesPerChannel = 40*obj.sampleReadSize;

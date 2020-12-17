@@ -49,9 +49,9 @@ function channelMeanTrace_uFun(src,event,varargin)
 	else
 		figH = findobj('Tag',figureTag);
 		pH = axH.Children;
-	end
+    end
 
-
+    tH = title('','Parent',axH);
 
 	% scanimage stores image data in a data structure called 'stripeData'
     lastStripe = hSI.hDisplay.stripeDataBuffer{hSI.hDisplay.stripeDataBufferPointer}; % get the pointer to the last acquired stripeData
@@ -92,7 +92,7 @@ function channelMeanTrace_uFun(src,event,varargin)
 			end
 		end
     	figH.UserData.lastUpdate=now;
-    	title(titleStr)
+    	tH.String = titleStr;
     	drawnow
     end
 

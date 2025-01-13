@@ -9,7 +9,7 @@ classdef blankMonitor < handle
     % https://github.com/BaselLaserMouse/ScanImageTools/blob/master/code/%2Bsitools/monitor_blanker.m
     % microscope-control/monitor_blanker by Petr Znamenskiy
     % https://github.com/znamlab/microscope-control/blob/master/src/monitor-blanking/monitor_blanker.m
-
+  
     properties (Hidden, SetAccess=protected)
         daqName = 'vDAQ0'
         hTask
@@ -18,7 +18,8 @@ classdef blankMonitor < handle
     properties
         monitor_port = 1
         monitor_line = 7
-        on_duration = 15; % in microseconds
+        on_duration =12; % int £ in microseconds
+        offset = 30; % for Lenovo
         scannerFrequency
         is_bidirectional
         mon_waveform
@@ -27,7 +28,7 @@ classdef blankMonitor < handle
     methods
         function obj = blankMonitor(src)
             obj.scannerFrequency = src.hSI.hScan2D.scannerFrequency;
-            obj.is_bidirectional = src.hSI.hScan2D.beamClockExtend  ;
+            obj.is_bidirectional = src.hSI.hScan2D.bidirectional;
             % get the handle for the vDAQ device
             hResourceStore = dabs.resources.ResourceStore();
             hvDAQ = hResourceStore.filterByName(obj.daqName);
@@ -57,19 +58,22 @@ classdef blankMonitor < handle
             off_timings = round((fullscan_timings - 2*on_timings) /2);
             
             if obj.is_bidirectional
+                disp('Bidirectional scanning now!');
                 obj.mon_waveform = [ ...
                    zeros(off_timings, 1); 
-                   ones(on_timings-10, 1);
+                   ones(on_timings-obj.offset, 1);
                    zeros(1,1);];  % to keep it zero (healthy for the monitor)
+
             else % unidirectional
+                  disp('Unidirectional scanning now!');
                   obj.mon_waveform = [ ...
                    zeros(off_timings, 1); 
-                   ones(on_timings, 1);
-                   zeros(off_timings, 1); 
-                   ones(on_timings-10, 1);
+                   ones(on_timings-obj.offset, 1);
+                   zeros(obj.offset+off_timings, 1); 
+                   ones(on_timings-obj.offset, 1);
                    zeros(1,1);];  % to keep it zero (healthy for the monitor)              
             end
-                       
+            
             obj.hTask.writeOutputBuffer(obj.mon_waveform);
             obj.hTask.samplesPerTrigger = size(obj.mon_waveform, 1);
         end

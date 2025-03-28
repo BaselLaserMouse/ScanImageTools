@@ -1,14 +1,12 @@
-classdef blankMonitor < handle
+classdef blankPhotostim < handle
     % This is ScanImage user class.
-    % monitor_blanker 2.0 for vDAQ RGG system.
+    % Blanker for photostimulation for vDAQ RGG system.
     % This class generates waveform and triggers it using ScanImage's Beam-Modified Line Clock 
     % https://docs.scanimage.org/Concepts/Triggers/Exported+Clocks.html
     % 
-    % Inspired and heavily adapted from
-    % si_tools.monitor_blanker by Rob Campbell 
-    % https://github.com/BaselLaserMouse/ScanImageTools/blob/master/code/%2Bsitools/monitor_blanker.m
-    % microscope-control/monitor_blanker by Petr Znamenskiy
-    % https://github.com/znamlab/microscope-control/blob/master/src/monitor-blanking/monitor_blanker.m
+    % You also need to build an electronics that accepts two BNC inputs. One of them is analog/digital input that 
+    % gates photostimulation laser or LED. Another input is enable/disable signal and you should pass the blankPhotostim
+    % to this input. TTL low is ENABLE and high is DISABLE.
   
     properties (Hidden, SetAccess=protected)
         daqName = 'vDAQ0'
@@ -17,7 +15,7 @@ classdef blankMonitor < handle
     
     properties
         monitor_port = 1
-        monitor_line = 7
+        monitor_line = 8
         on_duration =12; % int £ in microseconds
         offset = 30; % for Lenovo
         scannerFrequency
@@ -35,7 +33,7 @@ classdef blankMonitor < handle
             hFpga = hvDAQ.hDevice;
 
             % create task
-            obj.hTask = dabs.vidrio.ddi.DoTask(hFpga,'Monitor Blanking waveform');
+            obj.hTask = dabs.vidrio.ddi.DoTask(hFpga,'Photostim Blanking waveform');
             mon_ch = sprintf('D%d.%d', obj.monitor_port, obj.monitor_line);
             obj.hTask.addChannel(mon_ch);
             obj.hTask.sampleRate = obj.hTask.maxSampleRate;
@@ -48,30 +46,34 @@ classdef blankMonitor < handle
             obj.hTask.triggerOnStart = 1;    
             
             % setup waveform
-            obj.make_waveform()
+            obj.make_waveform(false)
         end
         
-        function make_waveform(obj)        
+        function make_waveform(obj, last)        
             % convert from microseconds to samples
             on_timings = round(obj.on_duration * 1e-6 * obj.hTask.sampleRate);
             fullscan_timings = round((1/obj.scannerFrequency) * obj.hTask.sampleRate);
             off_timings = round((fullscan_timings - 2*on_timings) /2);
             
-            if obj.is_bidirectional
-                disp('Bidirectional scanning now!');
-                obj.mon_waveform = [ ...
-                   zeros(off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(1,1);];  % to keep it zero (healthy for the monitor)
+            if last % just output low TTL (0V)  
+                obj.mon_waveform = [zeros(1,1)];
+            else
+                if obj.is_bidirectional
+                    disp('Bidirectional scanning now!');
+                    obj.mon_waveform = [ ...
+                    ones(off_timings, 1); 
+                    zeros(on_timings-obj.offset, 1);
+                    ones(1,1);];
 
-            else % unidirectional
-                  disp('Unidirectional scanning now!');
-                  obj.mon_waveform = [ ...
-                   zeros(off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(obj.offset+off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(1,1);];  % to keep it zero (healthy for the monitor)              
+                else % unidirectional
+                    disp('Unidirectional scanning now!');
+                    obj.mon_waveform = [ ...
+                    ones(off_timings, 1); 
+                    zeros(on_timings-obj.offset, 1);
+                    ones(obj.offset+off_timings, 1); 
+                    zeros(on_timings-obj.offset, 1);
+                    ones(1,1);];          
+                end
             end
             
             obj.hTask.writeOutputBuffer(obj.mon_waveform);
@@ -82,7 +84,7 @@ classdef blankMonitor < handle
             % update waveform and restart task
             if value>=0
                 obj.on_duration = value;
-                obj.make_waveform()
+                obj.make_waveform(false)
             else
                 fprintf('Waveform timings must be a positive number (in usec).\n')
             end
@@ -92,7 +94,7 @@ classdef blankMonitor < handle
             try
                 obj.hTask.start();
                 if msg
-                    fprintf('Monitor blanker has started\n')
+                    fprintf('Photostimulation blanker has started\n')
                 end
             catch ME
                 error('Failed to start task')
@@ -108,8 +110,9 @@ classdef blankMonitor < handle
         end
         
         function delete(obj)
-            fprintf('Monitor blanker is shutting down...')
-            obj.start(false) % to ensure zero signals to the monitor (healthy for the monitor)
+            fprintf('Photostimulation blanker is shutting down...')
+            obj.make_waveform(true) % to ensure zero signals to the monitor (healthy for the circuit)
+            obj.start(false)
             obj.stop()
             obj.hTask.delete();
             fprintf('done\n')

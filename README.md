@@ -20,4 +20,5 @@ If you want to install MFH Mods for ScanImage, you need to replace the original 
 
 ### Electronic circuits
 Some of the tools also require custom electronics.
+* `sitools.blankMonitor` - You need to customize the circuit within monitors. We use Lenovo E22-28 (discontinued as of March 2025).
 * `sitools.blankPhotostim` - You need analog switch ADG819 to gate signals. You can gate both TTL pulses (for LED) and AO (for laser AOM e.g. Satsuma HP).

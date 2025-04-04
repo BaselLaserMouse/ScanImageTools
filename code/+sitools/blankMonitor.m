@@ -17,7 +17,7 @@ classdef blankMonitor < handle
     
     properties
         monitor_port = 1
-        monitor_line = 7
+        monitor_line = 6
         on_duration =12; % int £ in microseconds
         offset = 30; % for Lenovo
         scannerFrequency

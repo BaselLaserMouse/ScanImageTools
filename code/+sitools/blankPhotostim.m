@@ -15,7 +15,7 @@ classdef blankPhotostim < handle
     
     properties
         monitor_port = 1
-        monitor_line = 8
+        monitor_line = 5
         on_duration =12; % int £ in microseconds
         offset = 30; % for Lenovo
         scannerFrequency
@@ -24,7 +24,7 @@ classdef blankPhotostim < handle
     end
 
     methods
-        function obj = blankMonitor(src)
+        function obj = blankPhotostim(src)
             obj.scannerFrequency = src.hSI.hScan2D.scannerFrequency;
             obj.is_bidirectional = src.hSI.hScan2D.bidirectional;
             % get the handle for the vDAQ device

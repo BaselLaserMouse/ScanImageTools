@@ -3,7 +3,7 @@ Useful ScanImage-related MATLAB tools.
 
 ### Contents
 * `sitools.blankMonitor`/`sitools.monitor_blanker`  - Blank monitors and enable them only during fast axis turn-around periods.
-* `sitools.blankPhotostim` - Blank photostimulation TTL and enable them only during fast axis turn-around periods.
+* `sitools.blankPhotostim` - Blank photostimulation TTL and enable them only during fast axis turn-around periods. **Because this makes it difficult to control stim frequency and duty cycle, we don't use at 2p-313.**
 * `sitools.ai_recorder` - Acquire AI data during acquisition. Can start/stop in sync with ScanImage image acquisition. Automatically saves AI waveforms when images are saved during a Grab acquisition in ScanImage. 
 * UserFunctionInjector - apply user functions at the command line using the class `scanImageTool_base`. An example is provided.   
 * `appendDateAndTimeToFname` - User function that adds the current date and time to the start of the file name. Updates when Grab or loop is pressed.

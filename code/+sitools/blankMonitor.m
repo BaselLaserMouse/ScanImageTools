@@ -18,8 +18,8 @@ classdef blankMonitor < handle
     properties
         monitor_port = 1
         monitor_line = 6
-        on_duration =12; % int £ in microseconds
-        offset = 30; % for Lenovo
+        on_duration = 5; % in microseconds.
+        offset = 5 % -1; % in microseconds.
         scannerFrequency
         is_bidirectional
         mon_waveform
@@ -55,25 +55,45 @@ classdef blankMonitor < handle
             % convert from microseconds to samples
             on_timings = round(obj.on_duration * 1e-6 * obj.hTask.sampleRate);
             fullscan_timings = round((1/obj.scannerFrequency) * obj.hTask.sampleRate);
-            off_timings = round((fullscan_timings - 2*on_timings) /2);
-            
+            assert(2*on_timings < fullscan_timings, ...
+                'on_duration too long: pulses will overlap');
+            offset_samples = round(obj.offset * 1e-6 * obj.hTask.sampleRate);
+
             if obj.is_bidirectional
-                disp('Bidirectional scanning now!');
+                fprintf('Bidirectional scanning now.\n')
+                off_timings = round((fullscan_timings - 2*on_timings) /2);
+                % [offset] | [on] | [off] | [on] | [rest] | [0]
+                trailing  = offset_samples;
+                leading = off_timings - offset_samples;  % absorbs the rest
+
                 obj.mon_waveform = [ ...
-                   zeros(off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(1,1);];  % to keep it zero (healthy for the monitor)
+                    zeros(leading, 1); 
+                    ones(on_timings, 1);
+                    zeros(off_timings, 1); 
+                    ones(on_timings, 1);
+                    zeros(trailing, 1);
+                    zeros(1,1)];
+
+                duty_cycle = 100 * 2 * on_timings / fullscan_timings;
+
 
             else % unidirectional
-                  disp('Unidirectional scanning now!');
-                  obj.mon_waveform = [ ...
-                   zeros(off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(obj.offset+off_timings, 1); 
-                   ones(on_timings-obj.offset, 1);
-                   zeros(1,1);];  % to keep it zero (healthy for the monitor)              
+                fprintf('Unidirectional scanning now.\n')
+                off_timings_uni = fullscan_timings - on_timings;
+                leading = off_timings_uni - offset_samples;
+                trailing  = offset_samples;
+
+                obj.mon_waveform = [ ...
+                    zeros(leading, 1); 
+                    ones(on_timings, 1);
+                    zeros(trailing, 1);
+                    zeros(1,1)];
+
+                duty_cycle = 100 * on_timings / fullscan_timings;
+
             end
-            
+
+            fprintf('on_duration: %d us, offset: %d us, off_timings: %d, duty_cycle: %.1f%%\n', obj.on_duration, obj.offset, off_timings, duty_cycle);
             obj.hTask.writeOutputBuffer(obj.mon_waveform);
             obj.hTask.samplesPerTrigger = size(obj.mon_waveform, 1);
         end

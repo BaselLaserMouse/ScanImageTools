@@ -66,10 +66,17 @@ function appendDateAndTimeAndModeToFname(src,~,varargin)
 
     % --- Append mode tag if MROI or Stack is enabled ---
     modeTag = '';
-    if hSI.hRoiManager.mroiEnable
+    isMroi  = hSI.hRoiManager.mroiEnable;
+    isStack = hSI.hStackManager.enable;
+
+    if isMroi && isStack
+        modeTag = '__mroistack';
+    elseif isMroi
         modeTag = '__mroi';
-    elseif hSI.hStackManager.enable
+    elseif isStack
         modeTag = '__stack';
+    else
+        modeTag = '__single';
     end
 
     hSI.hScan2D.logFileStem = [datestr(now ,'yyyymmdd_HHMMSS__'), sampleName, modeTag];
